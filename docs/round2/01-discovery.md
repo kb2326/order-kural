@@ -120,6 +120,38 @@ the bracketed rates, the recordings.
 - **New pain ranking:** (1) assembling fragmented orders; (2) two books plus a bill plus a khata kept in sync by hand;
   (3) credit follow-up; (4) stock not tracked (no low-stock warning); (5) mistakes (still unmeasured).
 
+## 6d. First real customer voice note (2026-11-27) [F]
+
+The brother-in-law forwarded one real customer order (WhatsApp voice note, 35.8 s, **Hindi**). The audio stays
+private (`data/private/`, git-ignored). What it says, as the customer also wrote it down:
+
+| # | Item | Size band | Qty |
+|---|---|---|---|
+| 1 | Girls pant | 1-10 yrs | 50 pcs |
+| 2 | Teen girls pant | 11-25 yrs | 50 pcs |
+| 3 | Women's pant | 25-30 yrs | 50 pcs |
+| 4 | Girls T-shirt | 1-10 yrs | 50 pcs |
+| 5 | Girls T-shirt | 10-25 yrs | 50 pcs |
+| 6 | Women's T-shirt | 25-30 yrs | 50 pcs |
+
+Plus: "book it today with **Girnar Transport**, send me the company **account number**, I'll pay."
+
+**Sarvam Saaras v4 test** (`mode=codemix`, `language_code=unknown`): detected `hi-IN`; every item, size band,
+quantity and the transport name came out right. Codemix output keeps English trade words in Latin script
+("girls pant", "50 piece", "Girnar Transport"), which is easier for the AI step than full Devanagari.
+
+**What this changes**
+
+- **Sizes are often age bands**, not S/M/L. The order model already stores sizes as free labels, so "1-10 yrs" fits.
+- **Customers forward their own voice notes, in their own language** (here Hindi, not Tamil). So there are two kinds
+  of piece: a **customer's forwarded voice note** (the order itself) and the **owner's own voice** (his summary of a
+  call, plus commands like "sari", "bill it"). Both go through the same pipeline.
+- **Payment can be advance by bank transfer** ("send the account number"), not only cash, UPI or credit.
+- **Splitting at a fixed time cut a phrase in half** ("...50." | "50 piece..."), which risks counting a quantity
+  twice. This confirms ADR-004: split at pauses, and let the AI see the joined transcript.
+- **Rates for women's and teen items are not in our list yet.** Ask the owner; don't guess.
+- This note is a good **eval case** (Hindi, 6 lines, transport and payment in one piece).
+
 ## 7. What "success" means for this round
 
 - **For the user:** one spoken order becomes a confirmed, complete order record, a bill and (if credit) a khata entry.
