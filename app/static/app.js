@@ -15,8 +15,11 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Each browser tab runs its own sample, so visitors never see or wipe each other's sample orders.
+const SAMPLE_SESSION = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random();
+
 async function api(path, method = "GET") {
-  const res = await fetch(path, { method });
+  const res = await fetch(path, { method, headers: { "X-Sample-Session": SAMPLE_SESSION } });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(body.detail || res.statusText), { status: res.status });
   return body;

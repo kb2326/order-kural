@@ -1,5 +1,6 @@
 """FastAPI entry point: `uvicorn app.main:app`."""
 import os
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -21,6 +22,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app = FastAPI(title="Order Kural")
     app.state.db_path = db_path or os.environ.get("ORDER_KURAL_DB", DEFAULT_DB)
     app.state.pieces = PieceService(Store(app.state.db_path), Catalog.load(ITEMS_FILE))
+    app.state.sample_sessions = OrderedDict()
     app.include_router(router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

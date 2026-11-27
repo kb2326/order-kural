@@ -1,3 +1,11 @@
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def sample_session(client):
+    client.headers["X-Sample-Session"] = "test-session-a"
+
+
 def run_sample(client, confirm=True):
     client.post("/api/sample/reset")
     pieces = []
@@ -57,3 +65,22 @@ def test_discard_then_confirm_409(client):
 
 def test_get_missing_order_404(client):
     assert client.get("/api/orders/999").status_code == 404
+
+
+def test_two_sample_sessions_are_independent(client):
+    run_sample(client)
+    r = client.post("/api/sample/next", headers={"X-Sample-Session": "test-session-b"})
+    assert r.status_code == 200
+    assert r.json()["index"] == 1
+
+
+def test_sample_reset_does_not_touch_live_orders(client):
+    from app.domain.order import Order
+    live = client.app.state.pieces.store
+    live.save_order(Order(id=None, customer_name="Real Shop", city="Erode", state="open",
+                          transport=None, payment=None, lines=[]))
+    run_sample(client)
+    client.post("/api/sample/reset")
+    del client.headers["X-Sample-Session"]
+    names = [o["customer_name"] for o in client.get("/api/orders").json()]
+    assert names == ["Real Shop"]

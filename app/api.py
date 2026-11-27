@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from app.domain.money import format_inr
 from app.domain.order import Order
 from app.domain.rules import compute_totals
 from app.flow.pieces import PieceService, PieceStateError, Proposal
+from app.store.db import Store
 
 SAMPLE_LABEL = "Sample: saved AI results"
 SAMPLE_FILE = Path(__file__).parent / "sample" / "conversation.json"
@@ -19,8 +21,24 @@ SAMPLE_FILE = Path(__file__).parent / "sample" / "conversation.json"
 router = APIRouter(prefix="/api")
 
 
+MAX_SAMPLE_SESSIONS = 200
+
+
 def _svc(request: Request) -> PieceService:
-    return request.app.state.pieces
+    """The live service, or, when the page sends X-Sample-Session, that browser tab's own in-memory sample.
+    Samples never touch the live database, and one visitor's restart cannot wipe another's."""
+    session = request.headers.get("X-Sample-Session", "").strip()[:64]
+    if not session:
+        return request.app.state.pieces
+    sessions: OrderedDict[str, PieceService] = request.app.state.sample_sessions
+    svc = sessions.get(session)
+    if svc is None:
+        svc = PieceService(Store(":memory:"), request.app.state.pieces.catalog)
+        sessions[session] = svc
+        while len(sessions) > MAX_SAMPLE_SESSIONS:
+            sessions.popitem(last=False)
+    sessions.move_to_end(session)
+    return svc
 
 
 def _totals_json(totals) -> dict:
