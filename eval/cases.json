@@ -1,0 +1,109 @@
+{
+  "_note": "Eval v1. 'real' = from the shop's real customer voice note (Sarvam STT transcript, 27 Nov). 'synthetic' = written by us in the way the owner and buyers speak; labelled as such. Each case runs on a fresh empty shop.",
+  "cases": [
+    {
+      "id": "real-hindi-forwarded-note",
+      "source": "real",
+      "language": "hi-IN",
+      "turns": [
+        "Forwarded voice note from a buyer: Sir, मुझे girls pant 1 से 10 साल का 50 piece, और teenager girls के pant 11 से 25 साल तक का 50 piece, women's pant 25 से 30 साल का 50 piece, girls T-shirt 1 से 10 साल वाला 50 piece, girls T-shirt 10 से 25 साल वाला 50 piece, और women's T-shirt 25 से 30 साल वाला 50 piece, ये सभी मुझे चाहिए। आप आज ही Girnar Transport में book कर दीजिए और company के account number मुझे भेज दीजिए, मैं उसमें payment कर दूँगा।",
+        "Sri Murugan Tex, Erode",
+        "சரி"
+      ],
+      "gold": {"ask": true, "orders": [{"customer": "Sri Murugan Tex", "transport": "Girnar Transport", "payment": "bank",
+        "lines": [{"item_code": "GPT", "sizes": {"1-10 yrs": 50}},
+                  {"item_code": "GTS", "sizes": {"1-10 yrs": 50, "10-25 yrs": 50}}]}]}
+    },
+    {
+      "id": "tamil-two-pieces",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Kerala Fancy, Palakkad-ku irupathu naalu print palazzo venum", "appuram crop top S aaru M aaru L aaru", "சரி"],
+      "gold": {"orders": [{"customer": "Kerala Fancy", "lines": [{"item_code": "PRP", "quantity": 24},
+                                                               {"item_code": "CRT", "sizes": {"S": 6, "M": 6, "L": 6}}]}]}
+    },
+    {
+      "id": "tamil-change-and-remove",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Lakshmi Tex-ku crop top S pathu M pathu, shorts set 20, kids pant 24", "sari",
+                "Lakshmi Tex crop top M-a pannendu aakkunga, kids pant vendaam", "sari"],
+      "gold": {"orders": [{"customer": "Lakshmi Tex", "lines": [{"item_code": "CRT", "sizes": {"S": 10, "M": 12}},
+                                                              {"item_code": "SHS", "quantity": 20}]}]}
+    },
+    {
+      "id": "near-miss-customer",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Kerala Fancy-ku 24 print palazzo", "சரி", "Kerala Fancies-ku shorts set 10"],
+      "gold": {"ask": true, "orders": [{"customer": "Kerala Fancy", "lines": [{"item_code": "PRP", "quantity": 24}]}]}
+    },
+    {
+      "id": "no-shop-name",
+      "source": "synthetic",
+      "language": "hi-IN",
+      "turns": ["Forwarded voice note from a buyer: bhaiya crop top M 10 L 10 bhej dena, KPN se"],
+      "gold": {"ask": true, "orders": []}
+    },
+    {
+      "id": "unknown-item",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Kerala Fancy-ku silk saree pathu", "sari"],
+      "gold": {"orders": []}
+    },
+    {
+      "id": "rate-spoken-off-list",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Sri Murugan Tex-ku print palazzo 24, rate 60 rupees", "sari"],
+      "gold": {"orders": [{"customer": "Sri Murugan Tex", "lines": [{"item_code": "PRP", "quantity": 24, "rate": 60}]}]}
+    },
+    {
+      "id": "transport-and-payment-later",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Raja Garments, Madurai-ku stone pant 30", "sari", "Raja Garments KPN transport, cash", "sari"],
+      "gold": {"orders": [{"customer": "Raja Garments", "transport": "KPN", "payment": "cash",
+                           "lines": [{"item_code": "STP", "quantity": 30}]}]}
+    },
+    {
+      "id": "invoice-then-payment",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["Kerala Fancy, Palakkad-ku print palazzo 24", "sari", "Kerala Fancy bill podunga", "sari",
+                "Kerala Fancy aayiram rupees UPI-la kuduthaanga", "sari"],
+      "gold": {"orders": [{"customer": "Kerala Fancy", "lines": [{"item_code": "PRP", "quantity": 24}]}],
+               "bills": 1, "balances": {"Kerala Fancy": 71400}}
+    },
+    {
+      "id": "sari-with-nothing-pending",
+      "source": "synthetic",
+      "language": "ta-IN",
+      "turns": ["சரி"],
+      "gold": {"orders": []}
+    },
+    {
+      "id": "not-a-yes-while-pending",
+      "source": "synthetic",
+      "language": "en-IN",
+      "turns": ["Kerala Fancy 24 print palazzo", "sari also add ten shorts set"],
+      "gold": {"orders": []}
+    },
+    {
+      "id": "malayalam-mixed",
+      "source": "synthetic",
+      "language": "ml-IN",
+      "turns": ["Kerala Fancy-kku print palazzo randu dozen venam, KPN-il ayakkanam", "sheri"],
+      "gold": {"orders": [{"customer": "Kerala Fancy", "transport": "KPN",
+                           "lines": [{"item_code": "PRP", "quantity": 24}]}]}
+    },
+    {
+      "id": "kannada-mixed",
+      "source": "synthetic",
+      "language": "kn-IN",
+      "turns": ["Mysore Textiles-ge crop top M hattu, L hattu beku", "howdu"],
+      "gold": {"orders": [{"customer": "Mysore Textiles", "lines": [{"item_code": "CRT", "sizes": {"M": 10, "L": 10}}]}]}
+    }
+  ]
+}

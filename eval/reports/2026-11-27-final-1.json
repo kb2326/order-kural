@@ -1,0 +1,843 @@
+{
+ "summary": {
+  "cases": 13,
+  "orders_correct": 12,
+  "line_accuracy": 1.0,
+  "wrong_saved_lines": 0,
+  "claims_caught": 0,
+  "p50_ms": 420,
+  "p90_ms": 870,
+  "cost_paise": 147
+ },
+ "scores": [
+  {
+   "id": "real-hindi-forwarded-note",
+   "order_correct": true,
+   "lines_right": 2,
+   "lines_total": 2,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    655,
+    1272,
+    391
+   ],
+   "cost_paise": 14
+  },
+  {
+   "id": "tamil-two-pieces",
+   "order_correct": true,
+   "lines_right": 2,
+   "lines_total": 2,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    584,
+    485,
+    420
+   ],
+   "cost_paise": 12
+  },
+  {
+   "id": "tamil-change-and-remove",
+   "order_correct": true,
+   "lines_right": 2,
+   "lines_total": 2,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    1070,
+    864,
+    422,
+    234
+   ],
+   "cost_paise": 18
+  },
+  {
+   "id": "near-miss-customer",
+   "order_correct": false,
+   "lines_right": 1,
+   "lines_total": 1,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    474,
+    301,
+    405
+   ],
+   "cost_paise": 12
+  },
+  {
+   "id": "no-shop-name",
+   "order_correct": true,
+   "lines_right": 0,
+   "lines_total": 0,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    424
+   ],
+   "cost_paise": 4
+  },
+  {
+   "id": "unknown-item",
+   "order_correct": true,
+   "lines_right": 0,
+   "lines_total": 0,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    881,
+    392
+   ],
+   "cost_paise": 8
+  },
+  {
+   "id": "rate-spoken-off-list",
+   "order_correct": true,
+   "lines_right": 1,
+   "lines_total": 1,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    707,
+    422
+   ],
+   "cost_paise": 8
+  },
+  {
+   "id": "transport-and-payment-later",
+   "order_correct": true,
+   "lines_right": 1,
+   "lines_total": 1,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    396,
+    261,
+    395,
+    264
+   ],
+   "cost_paise": 17
+  },
+  {
+   "id": "invoice-then-payment",
+   "order_correct": true,
+   "lines_right": 1,
+   "lines_total": 1,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    544,
+    262,
+    352,
+    316,
+    350,
+    266
+   ],
+   "cost_paise": 26
+  },
+  {
+   "id": "sari-with-nothing-pending",
+   "order_correct": true,
+   "lines_right": 0,
+   "lines_total": 0,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    432
+   ],
+   "cost_paise": 4
+  },
+  {
+   "id": "not-a-yes-while-pending",
+   "order_correct": true,
+   "lines_right": 0,
+   "lines_total": 0,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    594,
+    327
+   ],
+   "cost_paise": 8
+  },
+  {
+   "id": "malayalam-mixed",
+   "order_correct": true,
+   "lines_right": 1,
+   "lines_total": 1,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    509,
+    302
+   ],
+   "cost_paise": 8
+  },
+  {
+   "id": "kannada-mixed",
+   "order_correct": true,
+   "lines_right": 1,
+   "lines_total": 1,
+   "wrong_saved": 0,
+   "claims_caught": 0,
+   "turn_ms": [
+    490,
+    235
+   ],
+   "cost_paise": 8
+  }
+ ],
+ "runs": {
+  "real-hindi-forwarded-note": {
+   "orders": [
+    {
+     "customer": "Sri Murugan Tex",
+     "transport": "Girnar Transport",
+     "payment": "bank",
+     "lines": [
+      {
+       "item_code": "GPT",
+       "sizes": {
+        "1-10 yrs": 50
+       },
+       "quantity": 50,
+       "rate_paise": 5500
+      },
+      {
+       "item_code": "GTS",
+       "sizes": {
+        "1-10 yrs": 50,
+        "10-25 yrs": 50
+       },
+       "quantity": 100,
+       "rate_paise": 5500
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Forwarded voice note from a buyer: Sir, मुझे girls pant 1 से 10 साल का 50 piece, और teenager girls के pant 11 से 25 साल तक का 50 piece, women's pant 25 से 30 साल का 50 piece, girls T-shirt 1 से 10 साल वाला 50 piece, girls T-shirt 10 से 25 साल वाला 50 piece, और women's T-shirt 25 से 30 साल वाला 50 piece, ये सभी मुझे चाहिए। आप आज ही Girnar Transport में book कर दीजिए और company के account number मुझे भेज दीजिए, मैं उसमें payment कर दूँगा।",
+     "spoken": [
+      "ये forward voice note किस customer के लिए है? shop का नाम बताइए।"
+     ],
+     "tool_calls": [],
+     "ms": 655,
+     "cost_paise": 4
+    },
+    {
+     "said": "Sri Murugan Tex, Erode",
+     "spoken": [
+      "Sri Murugan Tex: Girls pant 1-10 yrs 50; Girls T-shirt 1-10 yrs 50, 10-25 yrs 50; transport Girnar Transport; payment bank. कुल ₹8,250. ध्यान दें: Item code GPT does not match 'teenager girls ke pant 11 se 25 saal'; Item code GPT does not match 'women's pant 25 se 30 saal'; Item code TSH does not match 'women's T-shirt 25 se 30 saal'. सेव करने के लिए हाँ बोलिए."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 1272,
+     "cost_paise": 5
+    },
+    {
+     "said": "சரி",
+     "spoken": [
+      "सेव हो गया. Sri Murugan Tex का ऑर्डर कुल ₹8,250."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 391,
+     "cost_paise": 5
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Sri Murugan Tex": 0
+   }
+  },
+  "tamil-two-pieces": {
+   "orders": [
+    {
+     "customer": "Kerala Fancy",
+     "transport": null,
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "PRP",
+       "sizes": {},
+       "quantity": 24,
+       "rate_paise": 6800
+      },
+      {
+       "item_code": "CRT",
+       "sizes": {
+        "S": 6,
+        "M": 6,
+        "L": 6
+       },
+       "quantity": 18,
+       "rate_paise": 7500
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Kerala Fancy, Palakkad-ku irupathu naalu print palazzo venum",
+     "spoken": [
+      "Kerala Fancy: Print palazzo 24. மொத்தம் ₹1,632. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 584,
+     "cost_paise": 4
+    },
+    {
+     "said": "appuram crop top S aaru M aaru L aaru",
+     "spoken": [
+      "Kerala Fancy: Print palazzo 24; Crop top S 6, M 6, L 6. மொத்தம் ₹2,982. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 485,
+     "cost_paise": 4
+    },
+    {
+     "said": "சரி",
+     "spoken": [
+      "சேமிச்சாச்சு. Kerala Fancy ஆர்டர் மொத்தம் ₹2,982."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 420,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Kerala Fancy": 0
+   }
+  },
+  "tamil-change-and-remove": {
+   "orders": [
+    {
+     "customer": "Lakshmi Tex",
+     "transport": null,
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "CRT",
+       "sizes": {
+        "S": 10,
+        "M": 12
+       },
+       "quantity": 22,
+       "rate_paise": 7500
+      },
+      {
+       "item_code": "SHS",
+       "sizes": {},
+       "quantity": 20,
+       "rate_paise": 8500
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Lakshmi Tex-ku crop top S pathu M pathu, shorts set 20, kids pant 24",
+     "spoken": [
+      "Lakshmi Tex: Crop top S 10, M 10; Shorts set 20; Kids pant 24. மொத்தம் ₹3,872. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 1070,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "சேமிச்சாச்சு. Lakshmi Tex ஆர்டர் மொத்தம் ₹3,872."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 864,
+     "cost_paise": 4
+    },
+    {
+     "said": "Lakshmi Tex crop top M-a pannendu aakkunga, kids pant vendaam",
+     "spoken": [
+      "Lakshmi Tex: Crop top S 10, M 12. மொத்தம் ₹4,022. சேமிக்க சரி சொல்லுங்க.",
+      "Lakshmi Tex: Crop top S 10, M 12; Kids pant removed. மொத்தம் ₹3,350. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "change_line",
+      "remove_line"
+     ],
+     "ms": 422,
+     "cost_paise": 5
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "சேமிச்சாச்சு. Lakshmi Tex ஆர்டர் மொத்தம் ₹3,350."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 234,
+     "cost_paise": 5
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Lakshmi Tex": 0
+   }
+  },
+  "near-miss-customer": {
+   "orders": [
+    {
+     "customer": "Kerala Fancy",
+     "transport": null,
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "PRP",
+       "sizes": {},
+       "quantity": 24,
+       "rate_paise": 6800
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Kerala Fancy-ku 24 print palazzo",
+     "spoken": [
+      "Kerala Fancy: Print palazzo 24. மொத்தம் ₹1,632. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 474,
+     "cost_paise": 4
+    },
+    {
+     "said": "சரி",
+     "spoken": [
+      "சேமிச்சாச்சு. Kerala Fancy ஆர்டர் மொத்தம் ₹1,632."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 301,
+     "cost_paise": 4
+    },
+    {
+     "said": "Kerala Fancies-ku shorts set 10",
+     "spoken": [
+      "Kerala Fancy: Shorts set 10. மொத்தம் ₹2,482. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 405,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Kerala Fancy": 0
+   }
+  },
+  "no-shop-name": {
+   "orders": [],
+   "turns": [
+    {
+     "said": "Forwarded voice note from a buyer: bhaiya crop top M 10 L 10 bhej dena, KPN se",
+     "spoken": [
+      "Which customer is this for?"
+     ],
+     "tool_calls": [],
+     "ms": 424,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {}
+  },
+  "unknown-item": {
+   "orders": [],
+   "turns": [
+    {
+     "said": "Kerala Fancy-ku silk saree pathu",
+     "spoken": [
+      "Silk saree item code enga irukku nu theriyala, adha confirm pannikiren. Innoru item list-la irukka? Illa plain-a \"silk saree\" nu dhaan podanuma?"
+     ],
+     "tool_calls": [],
+     "ms": 881,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "Kerala Fancy: Unknown item: silk saree. எதுவும் சேர்க்கல. திரும்ப சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 392,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {}
+  },
+  "rate-spoken-off-list": {
+   "orders": [
+    {
+     "customer": "Sri Murugan Tex",
+     "transport": null,
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "PRP",
+       "sizes": {},
+       "quantity": 24,
+       "rate_paise": 6000
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Sri Murugan Tex-ku print palazzo 24, rate 60 rupees",
+     "spoken": [
+      "Sri Murugan Tex: Print palazzo 24. மொத்தம் ₹1,440. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 707,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "சேமிச்சாச்சு. Sri Murugan Tex ஆர்டர் மொத்தம் ₹1,440."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 422,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Sri Murugan Tex": 0
+   }
+  },
+  "transport-and-payment-later": {
+   "orders": [
+    {
+     "customer": "Raja Garments",
+     "transport": "KPN",
+     "payment": "cash",
+     "lines": [
+      {
+       "item_code": "STP",
+       "sizes": {},
+       "quantity": 30,
+       "rate_paise": 4500
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Raja Garments, Madurai-ku stone pant 30",
+     "spoken": [
+      "Raja Garments: Stone pant 30. மொத்தம் ₹1,350. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 396,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "சேமிச்சாச்சு. Raja Garments ஆர்டர் மொத்தம் ₹1,350."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 261,
+     "cost_paise": 4
+    },
+    {
+     "said": "Raja Garments KPN transport, cash",
+     "spoken": [
+      "Raja Garments: transport KPN. மொத்தம் ₹1,350. சேமிக்க சரி சொல்லுங்க.",
+      "Raja Garments: transport KPN; payment cash. மொத்தம் ₹1,350. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "set_detail",
+      "set_detail"
+     ],
+     "ms": 395,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "சேமிச்சாச்சு. Raja Garments ஆர்டர் மொத்தம் ₹1,350."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 264,
+     "cost_paise": 5
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Raja Garments": 0
+   }
+  },
+  "invoice-then-payment": {
+   "orders": [
+    {
+     "customer": "Kerala Fancy",
+     "transport": null,
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "PRP",
+       "sizes": {},
+       "quantity": 24,
+       "rate_paise": 6800
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Kerala Fancy, Palakkad-ku print palazzo 24",
+     "spoken": [
+      "Kerala Fancy: Print palazzo 24. மொத்தம் ₹1,632. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 544,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "சேமிச்சாச்சு. Kerala Fancy ஆர்டர் மொத்தம் ₹1,632."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 262,
+     "cost_paise": 4
+    },
+    {
+     "said": "Kerala Fancy bill podunga",
+     "spoken": [
+      "Kerala Fancy க்கு GST பில், GST சேர்த்து மொத்தம் ₹1,714. பில் போட சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "bill_order"
+     ],
+     "ms": 352,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "பில் நம்பர் 1 போட்டாச்சு, மொத்தம் ₹1,714. கணக்குல சேர்த்தாச்சு."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 316,
+     "cost_paise": 4
+    },
+    {
+     "said": "Kerala Fancy aayiram rupees UPI-la kuduthaanga",
+     "spoken": [
+      "Kerala Fancy UPI ல ₹1,000 கொடுத்திருக்காங்க. சேமிக்க சரி சொல்லுங்க."
+     ],
+     "tool_calls": [
+      "record_payment"
+     ],
+     "ms": 350,
+     "cost_paise": 5
+    },
+    {
+     "said": "sari",
+     "spoken": [
+      "பணம் சேமிச்சாச்சு. Kerala Fancy இன்னும் ₹714 தரணும்."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 266,
+     "cost_paise": 5
+    }
+   ],
+   "bills": 1,
+   "balances": {
+    "Kerala Fancy": 71400
+   }
+  },
+  "sari-with-nothing-pending": {
+   "orders": [],
+   "turns": [
+    {
+     "said": "சரி",
+     "spoken": [
+      "சரி, சொல்லுங்க. என்ன ஆர்டர் அல்லது வேலை?"
+     ],
+     "tool_calls": [],
+     "ms": 432,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {}
+  },
+  "not-a-yes-while-pending": {
+   "orders": [],
+   "turns": [
+    {
+     "said": "Kerala Fancy 24 print palazzo",
+     "spoken": [
+      "Kerala Fancy: Print palazzo 24. Order total ₹1,632. Say sari to save."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 594,
+     "cost_paise": 4
+    },
+    {
+     "said": "sari also add ten shorts set",
+     "spoken": [
+      "Say sari to save, or cancel."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 327,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {}
+  },
+  "malayalam-mixed": {
+   "orders": [
+    {
+     "customer": "Kerala Fancy",
+     "transport": "KPN",
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "PRP",
+       "sizes": {},
+       "quantity": 24,
+       "rate_paise": 6800
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Kerala Fancy-kku print palazzo randu dozen venam, KPN-il ayakkanam",
+     "spoken": [
+      "Kerala Fancy: Print palazzo 24; transport KPN. ആകെ ₹1,632. സേവ് ചെയ്യാൻ ശരി എന്ന് പറയൂ."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 509,
+     "cost_paise": 4
+    },
+    {
+     "said": "sheri",
+     "spoken": [
+      "സേവ് ചെയ്തു. Kerala Fancy ഓർഡർ ആകെ ₹1,632."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 302,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Kerala Fancy": 0
+   }
+  },
+  "kannada-mixed": {
+   "orders": [
+    {
+     "customer": "Mysore Textiles",
+     "transport": null,
+     "payment": null,
+     "lines": [
+      {
+       "item_code": "CRT",
+       "sizes": {
+        "M": 10,
+        "L": 10
+       },
+       "quantity": 20,
+       "rate_paise": 7500
+      }
+     ]
+    }
+   ],
+   "turns": [
+    {
+     "said": "Mysore Textiles-ge crop top M hattu, L hattu beku",
+     "spoken": [
+      "Mysore Textiles: Crop top M 10, L 10. ಒಟ್ಟು ₹1,500. ಉಳಿಸಲು ಸರಿ ಎಂದು ಹೇಳಿ."
+     ],
+     "tool_calls": [
+      "add_to_order"
+     ],
+     "ms": 490,
+     "cost_paise": 4
+    },
+    {
+     "said": "howdu",
+     "spoken": [
+      "ಉಳಿಸಲಾಗಿದೆ. Mysore Textiles ಆರ್ಡರ್ ಒಟ್ಟು ₹1,500."
+     ],
+     "tool_calls": [
+      "confirm_pending"
+     ],
+     "ms": 235,
+     "cost_paise": 4
+    }
+   ],
+   "bills": 0,
+   "balances": {
+    "Mysore Textiles": 0
+   }
+  }
+ }
+}

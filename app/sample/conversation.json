@@ -1,38 +1,50 @@
 {
-  "_note": "A made-up customer. Three voice pieces as the AI would understand them (saved AI results), so the full flow runs without any API key.",
-  "pieces": [
+  "_note": "Made-up customers. Each step is what the owner says and the tool calls the AI made for it (saved AI results), replayed through the real agent so the whole flow runs with no API key. Audio is synthetic (Sarvam Bulbul).",
+  "steps": [
     {
-      "transcript": "கேரளா ஃபேன்சி, பாலக்காடு. Print palazzo ரெண்டு dozen. Crop top S M L ஒவ்வொன்னும் six.",
-      "ai_result": {
-        "intent": "order_changes",
-        "customer": {"name_as_spoken": "Kerala Fancy", "city": "Palakkad", "match": "new", "confidence": "high"},
-        "changes": [
-          {"op": "add_line", "item_code": "PRP", "name_as_spoken": "print palazzo", "quantity_total": 24},
-          {"op": "add_line", "item_code": "CRT", "name_as_spoken": "crop top", "sizes": {"S": 6, "M": 6, "L": 6}}
-        ]
-      }
+      "user_text": "கேரளா ஃபேன்சி, பாலக்காடு. Print palazzo ரெண்டு dozen. Crop top S M L ஒவ்வொன்னும் six.",
+      "language": "ta-IN",
+      "tool_calls": [
+        {"name": "add_to_order", "args": {"customer": "Kerala Fancy", "city": "Palakkad", "items": [
+          {"name_as_spoken": "print palazzo", "item_code": "PRP", "quantity_total": 24},
+          {"name_as_spoken": "crop top", "item_code": "CRT", "sizes": {"S": 6, "M": 6, "L": 6}}]}}
+      ]
     },
     {
-      "transcript": "Kerala Fancy-க்கு kids palazzo set S M L ஒவ்வொன்னும் பத்து add பண்ணுங்க. Crop top twelve ஆக்குங்க.",
-      "ai_result": {
-        "intent": "order_changes",
-        "customer": {"name_as_spoken": "Kerala Fancy", "match": "existing", "confidence": "high"},
-        "changes": [
-          {"op": "add_line", "item_code": "KPS", "name_as_spoken": "kids palazzo set", "sizes": {"S": 10, "M": 10, "L": 10}},
-          {"op": "change_line", "item_code": "CRT", "sizes": {"S": 12, "M": 12, "L": 12}}
-        ]
-      }
+      "user_text": "அப்புறம் kids palazzo set S M L ஒவ்வொன்னும் பத்து. KPN transport, credit.",
+      "language": "ta-IN",
+      "tool_calls": [
+        {"name": "add_to_order", "args": {"customer": "Kerala Fancy", "items": [
+          {"name_as_spoken": "kids palazzo set", "item_code": "KPS", "sizes": {"S": 10, "M": 10, "L": 10}}],
+          "transport": "KPN", "payment": "credit"}}
+      ]
+    },
+    {"user_text": "சரி", "language": "ta-IN", "tool_calls": [{"name": "confirm_pending", "args": {}}]},
+    {
+      "user_text": "Forwarded voice note from a buyer: Namaste, girls pant 1 se 10 saal 50 piece, girls T-shirt 1 se 10 saal 50 piece. Girnar Transport se bhej dijiye, account number bhejiye, payment kar dunga.",
+      "language": "ta-IN",
+      "tool_calls": [],
+      "assistant_text": "இது எந்த கஸ்டமருக்கு?"
     },
     {
-      "transcript": "Kerala Fancy, KPN transport, credit.",
-      "ai_result": {
-        "intent": "order_changes",
-        "customer": {"name_as_spoken": "Kerala Fancy", "match": "existing", "confidence": "high"},
-        "changes": [
-          {"op": "set_field", "field": "transport", "value": "KPN"},
-          {"op": "set_field", "field": "payment", "value": "credit"}
-        ]
-      }
-    }
+      "user_text": "ஸ்ரீ முருகன் டெக்ஸ், ஈரோடு",
+      "language": "ta-IN",
+      "tool_calls": [
+        {"name": "add_to_order", "args": {"customer": "Sri Murugan Tex", "city": "Erode", "items": [
+          {"name_as_spoken": "girls pant", "item_code": "GPT", "sizes": {"1-10 yrs": 50}},
+          {"name_as_spoken": "girls t-shirt", "item_code": "GTS", "sizes": {"1-10 yrs": 50}}],
+          "transport": "Girnar Transport", "payment": "bank"}}
+      ]
+    },
+    {"user_text": "சரி", "language": "ta-IN", "tool_calls": [{"name": "confirm_pending", "args": {}}]},
+    {"user_text": "Kerala Fancy-க்கு bill போடுங்க", "language": "ta-IN",
+     "tool_calls": [{"name": "bill_order", "args": {"customer": "Kerala Fancy"}}]},
+    {"user_text": "சரி", "language": "ta-IN", "tool_calls": [{"name": "confirm_pending", "args": {}}]},
+    {"user_text": "Kerala Fancy ஐயாயிரம் UPI-ல கொடுத்தாங்க", "language": "ta-IN",
+     "tool_calls": [{"name": "record_payment", "args": {"customer": "Kerala Fancy", "amount_rupees": 5000,
+                                                         "mode": "upi"}}]},
+    {"user_text": "சரி", "language": "ta-IN", "tool_calls": [{"name": "confirm_pending", "args": {}}]},
+    {"user_text": "என்ன என்ன அனுப்பணும்?", "language": "ta-IN",
+     "tool_calls": [{"name": "ask_shop", "args": {"question": "to_ship"}}]}
   ]
 }

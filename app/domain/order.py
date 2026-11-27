@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
 from app.domain.catalog import Catalog
 from app.domain.changes import AddLine, Change, ChangeLine, RemoveLine, SetField
+from app.domain.gst import GSTIN_RE, state_code_from_name
 from app.domain.rules import Payment, line_flags, normalise_payment
 
 
@@ -29,6 +31,8 @@ class Order:
     transport: str | None
     payment: Payment | None
     lines: list[OrderLine]
+    gstin: str | None = None       # buyer's GSTIN (B2B); None = unregistered (B2C)
+    state_code: str | None = None  # place of supply, when said; else from GSTIN or town
 
 
 @dataclass
@@ -47,6 +51,12 @@ class ApplyResult:
     problems: list[str]
 
 
+# Real size labels: letter sizes, free size, waist numbers, ages and age bands. Anything else (e.g. "SR", which is
+# speech-to-text writing "S aaru" = S six) is reported instead of saved.
+SIZE_LABEL = re.compile(r"^(xs|s|m|l|xl|xxl|xxxl|[2-6]xl|free( size)?|\d{1,2}(\s*-\s*\d{1,2})?"
+                        r"(\s*(y|yr|yrs|year|years|m|months))?)$", re.IGNORECASE)
+
+
 def describe(line: OrderLine) -> str:
     """'S 6, M 6, L 6' when sized, else the plain quantity '24'."""
     if line.sizes:
@@ -60,11 +70,20 @@ def _find(order: Order, code: str) -> OrderLine | None:
 
 def _add(new: Order, ch: AddLine, catalog: Catalog, diff: list[DiffEntry], problems: list[str]) -> None:
     item = catalog.get(ch.item_code) if ch.item_code else None
+    if item is not None and not catalog.plausible(item, ch.name_as_spoken):
+        problems.append(f"Item code {item.code} does not match '{ch.name_as_spoken}'")
+        return
     item = item or catalog.match(ch.name_as_spoken)
     if item is None:
-        problems.append(f"Unknown item: {ch.name_as_spoken}")
+        close = catalog.closest(ch.name_as_spoken)
+        hint = f". Closest: {', '.join(i.name for i in close)}" if close else ""
+        problems.append(f"Unknown item: {ch.name_as_spoken}{hint}")
         return
     sizes = {s: q for s, q in ch.sizes.items() if q > 0}
+    unclear = [s for s in sizes if not SIZE_LABEL.match(s.strip())]
+    if unclear:
+        problems.append(f"Size not clear for {item.name}: {', '.join(unclear)}")
+        return
     added = sum(sizes.values()) if sizes else (ch.quantity_total or 0)
     if added == 0:
         problems.append(f"No quantity for: {ch.name_as_spoken}")
@@ -134,15 +153,28 @@ def apply_changes(order: Order, changes: list[Change], catalog: Catalog) -> Appl
             new.lines.remove(existing)
             diff.append(DiffEntry("removed", ch.item_code, None, describe(existing), None))
         elif isinstance(ch, SetField):
+            target_field = ch.field
             if ch.field == "payment":
                 value = normalise_payment(ch.value)
                 if value is None:
                     problems.append(f"Unclear payment: {ch.value}")
                     continue
+            elif ch.field == "gstin":
+                value = ch.value.strip().upper().replace(" ", "")
+                if not GSTIN_RE.match(value):
+                    problems.append(f"GSTIN not valid: {ch.value}")
+                    continue
+                new.state_code = value[:2]
+            elif ch.field == "state":
+                value = state_code_from_name(ch.value)
+                if value is None:
+                    problems.append(f"Unknown state: {ch.value}")
+                    continue
+                target_field = "state_code"
             else:
                 value = ch.value.strip()
-            before = getattr(new, ch.field)
-            setattr(new, ch.field, value)
+            before = getattr(new, target_field)
+            setattr(new, target_field, value)
             diff.append(DiffEntry("set", None, ch.field, before, value))
 
     for line in new.lines:

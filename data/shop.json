@@ -1,0 +1,14 @@
+{
+  "_note": "MADE-UP demo shop details. Replace with the real shop's details before real use.",
+  "name": "KURAL GARMENTS (DEMO)",
+  "address": "12, Demo Street, Khaderpet, Tirupur, Tamil Nadu - 641 601",
+  "phone": "90000 00000",
+  "gstin": "33AAAAA0000A1Z5",
+  "state": "Tamil Nadu",
+  "state_code": "33",
+  "invoice_prefix": "KG",
+  "bank": {"name": "KURAL GARMENTS (DEMO)", "bank": "Demo Bank", "branch": "Tirupur", "account": "000000000000",
+           "ifsc": "DEMO0000000"},
+  "terms": ["Goods once sold cannot be taken back", "Late payment interest will be charged at 24% per annum",
+            "Payment within 7 days only", "Subject to Tirupur jurisdiction"]
+}

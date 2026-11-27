@@ -149,3 +149,35 @@ def test_total_change_on_sized_line_is_a_problem(cat):
     res = apply_changes(o, [ChangeLine(op="change_line", item_code="CRT", quantity_total=30)], cat)
     assert res.problems == ["Sizes needed for: Crop top"]
     assert line(res.order, "CRT").quantity == 12
+
+
+def test_item_code_contradicting_name_is_problem(cat):
+    res = apply_changes(empty_order(), [add("GPT", "women's pant", qty=50)], cat)
+    assert res.order.lines == []
+    assert res.problems == ["Item code GPT does not match 'women's pant'"]
+
+
+def test_unknown_item_offers_closest(cat):
+    res = apply_changes(empty_order(), [add(None, "palazo set", qty=10)], cat)
+    assert res.problems[0].startswith("Unknown item: palazo set. Closest: ")
+    assert "Kids palazzo set" in res.problems[0]
+
+
+def test_matching_code_and_name_still_added(cat):
+    res = apply_changes(empty_order(), [add("GPT", "girls pant", sizes={"1-10 yrs": 50})], cat)
+    assert res.problems == []
+    assert line(res.order, "GPT").sizes == {"1-10 yrs": 50}
+
+
+def test_unclear_size_label_is_problem_not_added(cat):
+    """27 Nov live check: STT wrote 'S aaru' (S six) as 'SR' and the AI saved size 'SR'."""
+    r = apply_changes(empty_order(), [add("PPL", "plain palazzo", sizes={"SR": 24, "MR": 24})], cat)
+    assert r.order.lines == []
+    assert r.problems == ["Size not clear for Plain palazzo: SR, MR"]
+
+
+@pytest.mark.parametrize("label", ["S", "m", "XL", "XXL", "3XL", "Free size", "1-10 yrs", "11-25 yrs", "28", "2-3",
+                                   "6Y", "10 years"])
+def test_real_size_labels_accepted(cat, label):
+    r = apply_changes(empty_order(), [add("PPL", "plain palazzo", sizes={label: 24})], cat)
+    assert r.problems == [] and r.order.lines[0].sizes == {label: 24}

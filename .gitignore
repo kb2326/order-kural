@@ -11,3 +11,6 @@ data/private/
 data/runtime/
 .superpowers/
 .playwright-mcp/
+spikes/
+integration-setup/
+!app/sample/audio/*.wav

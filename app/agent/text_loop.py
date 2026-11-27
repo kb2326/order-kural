@@ -1,0 +1,117 @@
+"""The text brain: Sarvam chat with tool calling, driving an AgentSession. Used for typed input, uploaded voice notes
+and the eval. Rule: when a tool returns a `say`, that code-built sentence is spoken and the LLM is not asked to add
+anything, so it cannot describe a change that did not happen."""
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass, field
+
+import httpx
+
+from app.agent import say, words
+from app.agent.numbers import digits
+from app.agent.prompt import system_prompt
+from app.agent.session import AgentSession
+from app.agent.tools import TOOL_SPECS
+from app.obs.trace import span
+from app.providers.costs import chat_paise
+
+URL = "https://api.sarvam.ai/v2/chat/completions"
+MODEL = "sarvam-105b"
+FAIL = "Couldn't understand that. Please say it again, or type it."
+MAX_ROUNDS = 4
+HISTORY = 30
+
+
+def window(messages: list[dict], n: int) -> list[dict]:
+    """The last n messages, starting at a user message, so a tool reply is never kept without the assistant
+    tool_calls message it answers (27 Nov review)."""
+    kept = messages[-n:]
+    first_user = next((i for i, m in enumerate(kept) if m["role"] == "user"), len(kept))
+    return kept[first_user:]
+
+
+@dataclass
+class TurnResult:
+    spoken: list[str]
+    tool_calls: list[dict] = field(default_factory=list)
+    ui: dict = field(default_factory=dict)
+    timings_ms: dict = field(default_factory=dict)
+    cost_paise: int = 0
+    error: str | None = None
+
+
+class TextBrain:
+    def __init__(self, session: AgentSession, api_key: str, client: httpx.Client | None = None):
+        self.session = session
+        self.api_key = api_key
+        self.client = client or httpx.Client(timeout=45)
+        self.messages: list[dict] = []
+
+    def _chat(self, result: TurnResult) -> dict:
+        body = {"model": MODEL, "temperature": 0.2, "reasoning_effort": "none", "tool_choice": "auto",
+                "tools": TOOL_SPECS,
+                "messages": [{"role": "system", "content": system_prompt(self.session.catalog,
+                                                                          self.session.store.open_orders())}]
+                + window(self.messages, HISTORY)}
+        start = time.perf_counter()
+        with span(self.session.store, None, "chat", "sarvam") as s:
+            r = self.client.post(URL, json=body, headers={"api-subscription-key": self.api_key})
+            r.raise_for_status()
+            data = r.json()
+            usage = data.get("usage") or {}
+            s["cost_paise"] = chat_paise(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+            s["meta"] = {"usage": usage}
+        result.cost_paise += s["cost_paise"]
+        result.timings_ms["chat"] = result.timings_ms.get("chat", 0) + int((time.perf_counter() - start) * 1000)
+        return data["choices"][0]["message"]
+
+    def turn(self, user_text: str, language: str | None = None) -> TurnResult:
+        user_text = digits(user_text)  # Tamil number words -> digits, in code
+        self.session.heard(user_text, language)
+        self.messages.append({"role": "user", "content": user_text})
+        result = TurnResult(spoken=[])
+        try:
+            for _ in range(MAX_ROUNDS):
+                msg = self._chat(result)
+                calls = msg.get("tool_calls") or []
+                if not calls:
+                    text = (msg.get("content") or "").strip()
+                    self.messages.append({"role": "assistant", "content": text})
+                    if text:
+                        result.spoken.append(text)
+                    break
+                self.messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
+                spoke = []
+                for call in calls:
+                    name = call["function"]["name"]
+                    reply: dict = {"facts": {"error": "tool did not run"}, "said_to_owner": ""}
+                    try:
+                        try:
+                            args = json.loads(call["function"].get("arguments") or "{}")
+                        except json.JSONDecodeError:
+                            args = None
+                        out = (self.session.call(name, args) if isinstance(args, dict)
+                               else self.session._quiet({"error": "Arguments were not valid JSON"}))
+                        reply = {"facts": out.facts, "said_to_owner": out.say}
+                        result.tool_calls.append({"name": name, "args": args, "say": out.say, "wrote": out.wrote})
+                        if out.say and not out.repeat:  # a repeated identical call is not spoken twice
+                            spoke.append(out.say)
+                    finally:  # every tool call gets its reply, or the API rejects all later turns (27 Nov review)
+                        self.messages.append({"role": "tool", "tool_call_id": call["id"],
+                                              "content": json.dumps(reply, ensure_ascii=False, default=str)})
+                if spoke:
+                    result.spoken += spoke
+                    self.messages.append({"role": "assistant", "content": " ".join(spoke)})
+                    break
+        except (httpx.HTTPError, KeyError, IndexError, ValueError):
+            result.error = FAIL
+            result.spoken = [FAIL]
+        names = tuple(n.casefold() for i in self.session.catalog.all() for n in (i.name, *i.aliases))
+        if not result.error and result.spoken and words.unbacked_claim(result.spoken[-1], bool(result.tool_calls),
+                                                                         names):
+            # The AI claimed an action no tool performed: say so in code, so the owner is never misled.
+            result.spoken.append(say.render("not_done", {}, self.session.language))
+        result.ui = self.session.slip()
+        return result
