@@ -26,8 +26,11 @@ TOOL_SPECS = [
     _fn("find_customer", "Look up a customer by shop name (and city) before you are sure who is meant.",
         {"name": {"type": "string"}, "city": {"type": "string"}}, ["name"]),
     _fn("get_open_order", "Read what a customer has ordered so far.", {"customer": CUSTOMER}, ["customer"]),
-    _fn("add_to_order", "Add items the owner said to a customer's order. Use for any new order or extra items.",
-        {"customer": CUSTOMER, "items": {"type": "array", "items": ITEM}, "city": {"type": "string"}},
+    _fn("add_to_order", "Add items the owner said to a customer's order. Use for any new order or extra items. "
+                        "If the same message names a transport or payment, pass them here too.",
+        {"customer": CUSTOMER, "items": {"type": "array", "items": ITEM}, "city": {"type": "string"},
+         "transport": {"type": "string", "description": "Carrier name, e.g. KPN, Girnar Transport"},
+         "payment": {"type": "string", "enum": ["cash", "upi", "credit", "bank"]}},
         ["customer", "items"]),
     _fn("change_line", "Change the quantity or sizes of an item already in the order.",
         {"customer": CUSTOMER, "item_code": {"type": "string"},

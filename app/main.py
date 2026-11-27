@@ -11,6 +11,7 @@ from app.api import router
 from app.config import provider_status
 from app.domain.catalog import Catalog
 from app.flow.pieces import PieceService
+from app.ratelimit import RateLimiter
 from app.store.db import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -23,6 +24,10 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.state.db_path = db_path or os.environ.get("ORDER_KURAL_DB", DEFAULT_DB)
     app.state.pieces = PieceService(Store(app.state.db_path), Catalog.load(ITEMS_FILE))
     app.state.sample_sessions = OrderedDict()
+    app.state.agent_sessions = OrderedDict()
+    app.state.text_brains = {}
+    app.state.llm_client = None  # tests inject a mock httpx client here
+    app.state.text_limiter = RateLimiter(per_ip_hour=30, per_day=300)
     app.include_router(router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

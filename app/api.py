@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
+from app.agent.session import AgentSession
+from app.agent.text_loop import TextBrain
 from app.domain.changes import PieceResult
+from app.flow.shop import ShopService
 from app.domain.money import format_inr
 from app.domain.order import Order
 from app.domain.rules import compute_totals
@@ -66,6 +71,81 @@ def proposal_json(p: Proposal, svc: PieceService) -> dict:
             "order": order_json(p.order, svc), "diff": [asdict(d) for d in p.diff],
             "totals": _totals_json(p.totals), "missing": p.missing, "problems": p.problems,
             "readback": p.readback, "ask_customer": p.ask_customer}
+
+
+MAX_AGENT_SESSIONS = 200
+NO_KEY = "Sarvam API key not set"
+
+
+def _key() -> str:
+    return os.environ.get("SARVAM_API_KEY", "").strip()
+
+
+def _agent(request: Request) -> AgentSession:
+    """One agent conversation per browser tab (header X-Agent-Session), all sharing the live shop database."""
+    sid = request.headers.get("X-Agent-Session", "").strip()[:64] or "default"
+    sessions: OrderedDict[str, AgentSession] = request.app.state.agent_sessions
+    agent = sessions.get(sid)
+    if agent is None:
+        live = request.app.state.pieces
+        agent = AgentSession(live, ShopService(live.store, live.catalog))
+        sessions[sid] = agent
+        while len(sessions) > MAX_AGENT_SESSIONS:
+            sessions.popitem(last=False)
+    sessions.move_to_end(sid)
+    return agent
+
+
+def _brain(request: Request, agent: AgentSession) -> TextBrain:
+    brains: dict = request.app.state.text_brains
+    brain = brains.get(id(agent))
+    if brain is None or brain.session is not agent:
+        brain = TextBrain(agent, _key(), client=request.app.state.llm_client)
+        brains[id(agent)] = brain
+    brain.api_key = _key()
+    return brain
+
+
+def _limit(request: Request) -> None:
+    ip = request.client.host if request.client else "unknown"
+    if not request.app.state.text_limiter.allow(ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+
+class TextIn(BaseModel):
+    text: str
+
+
+@router.post("/agent/text")
+def agent_text(body: TextIn, request: Request) -> dict:
+    if not _key():
+        raise HTTPException(status_code=503, detail=NO_KEY)
+    _limit(request)
+    agent = _agent(request)
+    return asdict(_brain(request, agent).turn(body.text.strip()[:2000]))
+
+
+def _tap(request: Request, words: str, action: str) -> dict:
+    agent = _agent(request)
+    agent.heard(words)
+    result = agent.confirm_pending() if action == "confirm" else agent.discard_pending()
+    return {"spoken": [result.say], "ui": result.ui, "wrote": result.wrote}
+
+
+@router.post("/agent/confirm")
+def agent_confirm(request: Request) -> dict:
+    """The owner tapped Sari: the tap is his approval, same as saying it."""
+    return _tap(request, "sari", "confirm")
+
+
+@router.post("/agent/discard")
+def agent_discard(request: Request) -> dict:
+    return _tap(request, "cancel", "discard")
+
+
+@router.get("/agent/state")
+def agent_state(request: Request) -> dict:
+    return {"ui": _agent(request).slip()}
 
 
 @router.post("/sample/reset")

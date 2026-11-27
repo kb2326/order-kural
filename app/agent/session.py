@@ -122,10 +122,14 @@ class AgentSession:
                             "transport": order.transport, "payment": order.payment, "total_paise": _total(order)})
 
     # ---- order changes -------------------------------------------------------------------------------------
-    def add_to_order(self, customer: str, items: list[dict], city: str | None = None) -> ToolResult:
+    def add_to_order(self, customer: str, items: list[dict], city: str | None = None, transport: str | None = None,
+                     payment: str | None = None) -> ToolResult:
         changes = [{"op": "add_line", "name_as_spoken": i.get("name_as_spoken") or i.get("item_code") or "",
                     "item_code": i.get("item_code") or None, "sizes": i.get("sizes") or {},
-                    "quantity_total": i.get("quantity_total"), "rate_spoken": i.get("rate_spoken")} for i in items]
+                    "quantity_total": i.get("quantity_total"), "rate_spoken": i.get("rate_spoken")}
+                   for i in items or []]
+        changes += [{"op": "set_field", "field": f, "value": v} for f, v in (("transport", transport),
+                                                                             ("payment", payment)) if v]
         return self._stage_order(customer, city, changes)
 
     def change_line(self, customer: str, item_code: str, sizes: dict | None = None,
@@ -159,9 +163,12 @@ class AgentSession:
             return self._say("problems", {"customer": customer, "problems": proposal.problems}, wrote=False)
         if old and old.piece_id:
             self.pieces.discard(old.piece_id)
-        changed = [f"{self._name(d.item_code)} {d.after}" if d.item_code else f"{d.field} {d.after}"
-                   for d in proposal.diff if d.after]
-        removed = [f"{self._name(d.item_code)} removed" for d in proposal.diff if d.kind == "removed"]
+        latest: dict[str, str] = {}  # one phrase per item or field, with its final value
+        for d in proposal.diff:
+            key = d.item_code or d.field
+            latest[key] = (f"{self._name(d.item_code)} removed" if d.kind == "removed" else
+                           f"{self._name(d.item_code)} {d.after}" if d.item_code else f"{d.field} {d.after}")
+        changed, removed = list(latest.values()), []
         total = _total(proposal.order)
         self.pending = Pending(kind="order", customer=proposal.order.customer_name, piece_id=proposal.piece_id,
                                changes=combined, city=city,
@@ -240,13 +247,11 @@ class AgentSession:
             return self._say("nothing_pending", {}, wrote=False)
         if words.classify(self.last_user_text) != "yes":
             return self._say("need_yes", {"customer": p.customer}, wrote=False)
+        self.pending = None  # cleared first, so the slip returned with the result shows nothing waiting
         try:
-            result = self._apply(p)
+            return self._apply(p)
         except ShopError as e:
-            self.pending = None
             return self._say("problems", {"customer": p.customer, "problems": [str(e)]}, wrote=False)
-        self.pending = None
-        return result
 
     def _apply(self, p: Pending) -> ToolResult:
         if p.kind == "order":

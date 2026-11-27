@@ -73,7 +73,7 @@ def test_confirm_requires_yes_words(agent, store):
 def test_confirm_with_sari_saves(agent, store):
     agent.add_to_order("Kerala Fancy", PALAZZO)
     r = sari(agent)
-    assert r.wrote and agent.pending is None
+    assert r.wrote and agent.pending is None and r.ui["pending"] is None
     assert r.say == say.render("saved", {"customer": "Kerala Fancy", "total_paise": 156000}, "ta-IN")
     [order] = store.open_orders()
     assert order.customer_name == "Kerala Fancy" and order.lines[0].sizes == {"S": 6, "M": 6, "L": 6, "XL": 6}

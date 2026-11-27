@@ -31,6 +31,11 @@ def _stems(text: str) -> set[str]:
     return {w[:-1] if len(w) > 3 and w.endswith("s") else w for w in normalise(text).split()}
 
 
+# Words that name who an item is for. If what was said has one the item's own name lacks, it is a different item.
+AUDIENCE = {"women", "woman", "ladie", "lady", "teen", "teenage", "boy", "men", "man", "girl", "kid", "baby",
+            "gent"}
+
+
 class Catalog:
     def __init__(self, items: list[Item]):
         self._items = {i.code: i for i in items}
@@ -68,9 +73,12 @@ class Catalog:
     def plausible(self, item: Item, spoken: str) -> bool:
         """Does what was said fit this item? Guards against the AI picking the code of a different item
         (27 Nov probe: "women's pant" was given the Girls pant code)."""
+        said = _stems(spoken)
+        own = set().union(*(_stems(n) for n in (item.name, *item.aliases)))
+        if (said & AUDIENCE) - own:  # "teen girls pant" is not "Girls pant" (27 Nov real-note check)
+            return False
         if self.match(spoken) == item:
             return True
-        said = _stems(spoken)
         return any(_stems(n) <= said for n in (item.name, *item.aliases))
 
     def match(self, spoken: str) -> Item | None:

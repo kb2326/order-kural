@@ -35,3 +35,12 @@ def test_format_inr():
     assert format_inr(832860) == "₹8,328.60"
     assert format_inr(12345678) == "₹1,23,456.78"
     assert format_inr(0) == "₹0.00"
+
+
+def test_plausible_rejects_other_audience_words(cat):
+    gpt = cat.get("GPT")
+    assert cat.plausible(gpt, "girls pant")
+    assert not cat.plausible(gpt, "teen girls pant")
+    assert not cat.plausible(gpt, "women's pant")
+    assert not cat.plausible(gpt, "ladies pant")
+    assert cat.plausible(cat.get("KPT"), "kids pant")
