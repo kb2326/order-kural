@@ -83,7 +83,7 @@ erDiagram
 | **GST tax invoice**, packing list, **khata** with undo, monthly GST CSV | ✅ Unit-tested; invoice checked in a browser |
 | Read-back in Tamil, Hindi, Malayalam, Kannada and English | ✅ Malayalam and Kannada wording still to be checked by native speakers |
 | **Eval:** 13 conversations through the real AI | ✅ **11-12/13 fully correct, 0 wrong lines saved**, p50 about 0.4 s per turn ([report](docs/round2/05-evalset.md)) |
-| Tests | ✅ 360 passing |
+| Tests | ✅ 377 passing |
 
 ## Run it in one command
 
