@@ -13,3 +13,4 @@ data/runtime/
 .playwright-mcp/
 spikes/
 integration-setup/
+!app/sample/audio/*.wav
