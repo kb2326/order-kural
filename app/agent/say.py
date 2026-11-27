@@ -82,11 +82,11 @@ T: dict[str, dict[str, str]] = {
         "kn-IN": "ಇದು {near} ಗೆ ಆ, ಅಥವಾ ಹೊಸ ಗ್ರಾಹಕರೇ?",
     },
     "bill_staged": {
-        "en-IN": "Bill for {customer}, total {total}. Say sari to make the bill.",
-        "ta-IN": "{customer} க்கு பில், மொத்தம் {total}. பில் போட சரி சொல்லுங்க.",
-        "hi-IN": "{customer} का बिल, कुल {total}. बिल बनाने के लिए हाँ बोलिए.",
-        "ml-IN": "{customer} ന് ബിൽ, ആകെ {total}. ബിൽ ഉണ്ടാക്കാൻ ശരി പറയൂ.",
-        "kn-IN": "{customer} ಗೆ ಬಿಲ್, ಒಟ್ಟು {total}. ಬಿಲ್ ಮಾಡಲು ಸರಿ ಎನ್ನಿ.",
+        "en-IN": "GST invoice for {customer}, total {total} including GST. Say sari to make it.",
+        "ta-IN": "{customer} க்கு GST பில், GST சேர்த்து மொத்தம் {total}. பில் போட சரி சொல்லுங்க.",
+        "hi-IN": "{customer} का GST बिल, GST सहित कुल {total}. बिल बनाने के लिए हाँ बोलिए.",
+        "ml-IN": "{customer} ന് GST ബിൽ, GST ഉൾപ്പെടെ ആകെ {total}. ബിൽ ഉണ്ടാക്കാൻ ശരി പറയൂ.",
+        "kn-IN": "{customer} ಗೆ GST ಬಿಲ್, GST ಸೇರಿ ಒಟ್ಟು {total}. ಬಿಲ್ ಮಾಡಲು ಸರಿ ಎನ್ನಿ.",
     },
     "bill_saved": {
         "en-IN": "Bill {number} made, total {total}. Added to the khata.",

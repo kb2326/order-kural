@@ -165,6 +165,37 @@ quantity and the transport name came out right. Codemix output keeps English tra
 *before* the credit entry: capturing the order and turning it into something useful (bill, packing list, what is
 pending). Every order must cost him fewer actions than writing in two books, or he will not switch.
 
+## 6f. Two real bills from the shop (2026-11-27) [N]
+
+The photos stay private (`data/private/bills/`). They show real GSTINs, a bank account and customer names, so only
+the anonymised shape is recorded here.
+
+**1. A GST tax invoice (interstate, to a Kerala shop):**
+- **Header:** "TAX INVOICE" with an invoice number, a date and both GSTINs with state codes (33 Tamil Nadu, 32
+  Kerala). Also transport, freight "Paid / To Pay", payment "Cash / Credit" and an E-way bill no. field.
+- **Lines:** 20 lines with item name, **HSN 6109**, size range ("M, L, XL", "Free", "1-2, 3-4, 5-6"), quantity,
+  rate and amount. Items: crops, pants, palazzo, 3/4ths, kids co-ord sets, ladies shorts, packet shorts.
+- **Totals:** 6,443 pieces, ₹4,38,227 taxable, **IGST 5%** ₹21,911, round off, grand total ₹4,60,138, the amount in
+  words, bank details and terms (7-day payment, 24% late interest).
+
+**2. An "Estimate" (to a local Kerala shop):**
+- 6 lines (pants, 3/4ths, kids pant, shorts) with quantity, rate and amount: ₹67,500, then "Tax ₹1,000", total
+  ₹68,500.
+- No GSTIN, no HSN and no tax breakdown.
+
+**What the owner said:** GST invoices go to the auditor once a month. Estimates are for local buyers who "don't want
+a GST bill".
+
+**What this changes:**
+- **Orders are much bigger than the earlier estimate.** One interstate order was ₹4.6 lakh and 6,443 pieces across
+  20 lines. The ₹20,000-30,000 figure in §2 came from one page and is not typical.
+- **The real paperwork is a GST tax invoice** (IGST for other states, CGST + SGST inside Tamil Nadu), not just an
+  order list. That is the document the auditor needs every month.
+- **The law:** a registered supplier must issue a tax invoice for every taxable supply. Only supplies under ₹200 to
+  unregistered buyers may be put on one daily consolidated invoice (CGST Act s.31, Rule 46). Supplying without an
+  invoice is an offence (s.122(1)(i)). An "estimate" can only come *before* a tax invoice (a quotation or proforma);
+  it cannot replace one. The product must not offer an estimate in place of an invoice.
+
 ## 7. What "success" means for this round
 
 - **For the user:** one spoken order becomes a confirmed, complete order record, a bill and (if credit) a khata entry.

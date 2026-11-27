@@ -33,7 +33,7 @@ class RemoveLine(BaseModel):
 
 class SetField(BaseModel):
     op: Literal["set_field"]
-    field: Literal["transport", "payment", "city"]
+    field: Literal["transport", "payment", "city", "gstin", "state"]
     value: str
 
 

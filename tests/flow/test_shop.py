@@ -27,7 +27,7 @@ def test_issue_bill_numbers_increase_and_lock_order(store, shop):
     a, b = saved_order(store), saved_order(store, "Sri Murugan")
     first, second = shop.issue_bill(a), shop.issue_bill(b)
     assert (first.number, second.number) == (1, 2)
-    assert first.total_paise == 12 * 6500
+    assert first.grand_total_paise == 81900 and first.igst_paise == 3900
     assert store.get_order(a).state == "billed"
     assert a not in [o.id for o in store.open_orders()]
     assert store.get_bill(1)["order_id"] == a
@@ -47,19 +47,19 @@ def cid(store, order_id):
 def test_bill_adds_khata_debit(store, shop):
     oid = saved_order(store)
     bill = shop.issue_bill(oid)
-    assert shop.balance(cid(store, oid)) == bill.total_paise
+    assert shop.balance(cid(store, oid)) == bill.grand_total_paise == 81900
 
 
 def test_balance_bill_minus_payment(store, shop):
     oid = saved_order(store)
     shop.issue_bill(oid)
-    assert shop.record_payment(cid(store, oid), 50000, "upi") == 12 * 6500 - 50000
+    assert shop.record_payment(cid(store, oid), 50000, "upi") == 81900 - 50000
 
 
 def test_overpayment_gives_negative_balance(store, shop):
     oid = saved_order(store)
     shop.issue_bill(oid)
-    assert shop.record_payment(cid(store, oid), 100000, "cash") == 12 * 6500 - 100000 < 0
+    assert shop.record_payment(cid(store, oid), 100000, "cash") == 81900 - 100000 < 0
 
 
 def test_undo_payment_restores_balance(store, shop):
@@ -67,7 +67,7 @@ def test_undo_payment_restores_balance(store, shop):
     shop.issue_bill(oid)
     shop.record_payment(cid(store, oid), 50000, "upi")
     assert shop.undo_last(cid(store, oid)) == "Payment of ₹500.00 undone"
-    assert shop.balance(cid(store, oid)) == 12 * 6500
+    assert shop.balance(cid(store, oid)) == 81900
 
 
 def test_undo_bill_voids_and_reopens_order(store, shop):

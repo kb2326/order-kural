@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS customers (
     id INTEGER PRIMARY KEY, name TEXT NOT NULL, city TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL REFERENCES customers(id),
-    state TEXT NOT NULL DEFAULT 'open', transport TEXT, payment TEXT,
+    state TEXT NOT NULL DEFAULT 'open', transport TEXT, payment TEXT, gstin TEXT, state_code TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS order_lines (
     id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL REFERENCES orders(id), position INTEGER NOT NULL,
@@ -52,6 +52,7 @@ class Store:
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._upgrade_old_traces()
+        self._add_missing_columns()
         self.conn.executescript(SCHEMA)
         # One connection is shared by FastAPI's worker threads, so every access goes through this lock.
         self.lock = threading.RLock()
@@ -62,6 +63,13 @@ class Store:
         cols = {r[1] for r in self.conn.execute("PRAGMA table_info(traces)")}
         if cols and "provider" not in cols:
             self.conn.execute("DROP TABLE traces")
+
+    def _add_missing_columns(self) -> None:
+        """Databases made before 27 Nov have no buyer GSTIN / place of supply on orders."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(orders)")}
+        for col in ("gstin", "state_code"):
+            if cols and col not in cols:
+                self.conn.execute(f"ALTER TABLE orders ADD COLUMN {col} TEXT")
 
     @contextmanager
     def tx(self) -> Iterator[None]:
@@ -90,9 +98,10 @@ class Store:
             for l in self.conn.execute("SELECT * FROM order_lines WHERE order_id=? ORDER BY position", (row["id"],))
         ]
         return Order(id=row["id"], customer_name=row["name"], city=row["city"], state=row["state"],
-                     transport=row["transport"], payment=row["payment"], lines=lines)
+                     transport=row["transport"], payment=row["payment"], lines=lines, gstin=row["gstin"],
+                     state_code=row["state_code"])
 
-    _ORDER_SQL = ("SELECT o.id, o.state, o.transport, o.payment, c.name, c.city "
+    _ORDER_SQL = ("SELECT o.id, o.state, o.transport, o.payment, o.gstin, o.state_code, c.name, c.city "
                   "FROM orders o JOIN customers c ON c.id = o.customer_id")
 
     def open_orders(self) -> list[Order]:
@@ -123,13 +132,15 @@ class Store:
             cid = self._customer_id(order.customer_name, order.city)
             if order.id is None:
                 order_id = self.conn.execute(
-                    "INSERT INTO orders(customer_id, state, transport, payment) VALUES (?, ?, ?, ?)",
-                    (cid, order.state, order.transport, order.payment)).lastrowid
+                    "INSERT INTO orders(customer_id, state, transport, payment, gstin, state_code) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (cid, order.state, order.transport, order.payment, order.gstin, order.state_code)).lastrowid
             else:
                 order_id = order.id
                 self.conn.execute(
-                    "UPDATE orders SET customer_id=?, state=?, transport=?, payment=?, updated_at=CURRENT_TIMESTAMP "
-                    "WHERE id=?", (cid, order.state, order.transport, order.payment, order_id))
+                    "UPDATE orders SET customer_id=?, state=?, transport=?, payment=?, gstin=?, state_code=?, "
+                    "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (cid, order.state, order.transport, order.payment, order.gstin, order.state_code, order_id))
                 self.conn.execute("DELETE FROM order_lines WHERE order_id=?", (order_id,))
             self.conn.executemany(
                 "INSERT INTO order_lines(order_id, position, item_code, sizes_json, quantity, rate_paise, "
@@ -174,6 +185,10 @@ class Store:
                 "SELECT b.number, b.total_paise, b.voided, b.created_at, c.name AS customer FROM bills b "
                 "JOIN customers c ON c.id = b.customer_id ORDER BY b.number DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+    def all_bills(self) -> list[dict]:
+        with self.lock:
+            return [dict(r) for r in self.conn.execute("SELECT * FROM bills ORDER BY number")]
 
     def set_bill_voided(self, number: int) -> None:
         with self.tx():

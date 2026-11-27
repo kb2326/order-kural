@@ -10,6 +10,7 @@ Rules this file enforces, whatever the LLM does:
 from __future__ import annotations
 
 import difflib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -44,6 +45,24 @@ class Pending:
     city: str | None = None
     args: dict = field(default_factory=dict)
     view: dict = field(default_factory=dict)
+
+
+def _loose_items(items: Any) -> list[dict]:
+    """LLMs sometimes send items as a JSON string or as plain names (27 Nov live check). Accept both, so a tool
+    never crashes; a bare name then becomes a 'No quantity' problem the owner hears."""
+    if isinstance(items, list) and items and all(isinstance(i, str) for i in items) \
+            and items[0].lstrip().startswith(("[", "{")):
+        items = ", ".join(items)  # streamed JSON split at commas (27 Nov live voice check): put it back together
+    if isinstance(items, str):
+        try:  # raw_decode reads the first complete JSON value and ignores stray trailing brackets
+            items = json.JSONDecoder().raw_decode(items.strip())[0]
+        except json.JSONDecodeError:
+            items = [items]
+    if isinstance(items, dict):
+        items = [items]
+    if not isinstance(items, list):
+        raise TypeError("items must be a list")
+    return [i if isinstance(i, dict) else {"name_as_spoken": str(i)} for i in items]
 
 
 def _total(order: Order) -> int:
@@ -123,13 +142,14 @@ class AgentSession:
 
     # ---- order changes -------------------------------------------------------------------------------------
     def add_to_order(self, customer: str, items: list[dict], city: str | None = None, transport: str | None = None,
-                     payment: str | None = None) -> ToolResult:
+                     payment: str | None = None, gstin: str | None = None, state: str | None = None) -> ToolResult:
         changes = [{"op": "add_line", "name_as_spoken": i.get("name_as_spoken") or i.get("item_code") or "",
                     "item_code": i.get("item_code") or None, "sizes": i.get("sizes") or {},
                     "quantity_total": i.get("quantity_total"), "rate_spoken": i.get("rate_spoken")}
-                   for i in items or []]
-        changes += [{"op": "set_field", "field": f, "value": v} for f, v in (("transport", transport),
-                                                                             ("payment", payment)) if v]
+                   for i in _loose_items(items)]
+        changes += [{"op": "set_field", "field": f, "value": v}
+                    for f, v in (("transport", transport), ("payment", payment), ("gstin", gstin), ("state", state))
+                    if v]
         return self._stage_order(customer, city, changes)
 
     def change_line(self, customer: str, item_code: str, sizes: dict | None = None,
@@ -187,10 +207,17 @@ class AgentSession:
         order = self._open_order(customer)
         if order is None or not order.lines:
             return self._say("no_open_order", {"customer": customer}, wrote=False)
-        total = _total(order)
+        try:
+            inv = self.shop.preview_invoice(order)
+        except ShopError as e:  # e.g. place of supply unknown: the owner must say the state or GSTIN
+            return self._say("problems", {"customer": order.customer_name, "problems": [str(e)]}, wrote=False)
         self.pending = Pending(kind="bill", customer=order.customer_name, args={"order_id": order.id},
-                               view={"lines": self._lines_view(order), "total_paise": total})
-        return self._say("bill_staged", {"customer": order.customer_name, "total_paise": total}, wrote=True)
+                               view={"lines": self._lines_view(order), "taxable_paise": inv.taxable_paise,
+                                     "tax_paise": inv.igst_paise + inv.cgst_paise + inv.sgst_paise,
+                                     "total_paise": inv.grand_total_paise, "interstate": inv.interstate,
+                                     "b2b": inv.b2b})
+        return self._say("bill_staged", {"customer": order.customer_name, "total_paise": inv.grand_total_paise},
+                         wrote=True)
 
     def record_payment(self, customer: str, amount_rupees: int, mode: str) -> ToolResult:
         busy = self._busy(customer, "payment")
@@ -259,8 +286,9 @@ class AgentSession:
             return self._say("saved", {"customer": order.customer_name, "total_paise": _total(order),
                                        "order_id": order.id}, wrote=True)
         if p.kind == "bill":
-            bill = self.shop.issue_bill(p.args["order_id"])
-            return self._say("bill_saved", {"number": bill.number, "total_paise": bill.total_paise}, wrote=True)
+            inv = self.shop.issue_bill(p.args["order_id"])
+            return self._say("bill_saved", {"number": inv.number, "invoice_no": inv.invoice_no,
+                                            "total_paise": inv.grand_total_paise}, wrote=True)
         if p.kind == "payment":
             new_balance = self.shop.record_payment(p.args["customer_id"], p.args["amount_paise"], p.args["mode"])
             return self._say("payment_saved", {"customer": p.customer, "balance_paise": new_balance}, wrote=True)

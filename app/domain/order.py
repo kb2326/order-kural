@@ -8,6 +8,7 @@ from typing import Literal
 
 from app.domain.catalog import Catalog
 from app.domain.changes import AddLine, Change, ChangeLine, RemoveLine, SetField
+from app.domain.gst import GSTIN_RE, state_code_from_name
 from app.domain.rules import Payment, line_flags, normalise_payment
 
 
@@ -30,6 +31,8 @@ class Order:
     transport: str | None
     payment: Payment | None
     lines: list[OrderLine]
+    gstin: str | None = None       # buyer's GSTIN (B2B); None = unregistered (B2C)
+    state_code: str | None = None  # place of supply, when said; else from GSTIN or town
 
 
 @dataclass
@@ -150,15 +153,28 @@ def apply_changes(order: Order, changes: list[Change], catalog: Catalog) -> Appl
             new.lines.remove(existing)
             diff.append(DiffEntry("removed", ch.item_code, None, describe(existing), None))
         elif isinstance(ch, SetField):
+            target_field = ch.field
             if ch.field == "payment":
                 value = normalise_payment(ch.value)
                 if value is None:
                     problems.append(f"Unclear payment: {ch.value}")
                     continue
+            elif ch.field == "gstin":
+                value = ch.value.strip().upper().replace(" ", "")
+                if not GSTIN_RE.match(value):
+                    problems.append(f"GSTIN not valid: {ch.value}")
+                    continue
+                new.state_code = value[:2]
+            elif ch.field == "state":
+                value = state_code_from_name(ch.value)
+                if value is None:
+                    problems.append(f"Unknown state: {ch.value}")
+                    continue
+                target_field = "state_code"
             else:
                 value = ch.value.strip()
-            before = getattr(new, ch.field)
-            setattr(new, ch.field, value)
+            before = getattr(new, target_field)
+            setattr(new, target_field, value)
             diff.append(DiffEntry("set", None, ch.field, before, value))
 
     for line in new.lines:

@@ -251,6 +251,26 @@ our FastAPI app on a WebSocket, so it runs on Cloud Run in one container with no
    - one payment;
    - one Ask.
 
+### Changed 27 Nov evening: real GST tax invoices (owner approved)
+
+The owner shared a real GST tax invoice and an unofficial "estimate". Under CGST Act s.31 and Rule 46, a registered
+supplier must issue a tax invoice for every taxable supply, and selling without one is an offence under s.122. So:
+
+- **"Bill it" makes a GST tax invoice** in the shop's own paper layout.
+  - Invoice number series per financial year (`KG/26-27/0001`).
+  - Seller and buyer GSTINs, place of supply, HSN, size, quantity, rate and amount.
+  - 5% / 18% per piece (Rs 2,500 threshold); **IGST** for another state, **CGST + SGST** inside Tamil Nadu.
+  - Round-off to the rupee, the amount in words, bank details, terms and signatory.
+  - **B2C** invoices for buyers without a GSTIN.
+- **The place of supply comes from** the buyer's GSTIN, a stated state, or a known town. If none is known, the agent
+  asks for it and never guesses.
+- **The khata is debited with the grand total.**
+- **Monthly auditor report:** `GET /api/reports/gst.csv?month=YYYY-MM`, one row per invoice, voided invoices left out.
+- **Unofficial estimates are out of scope:** the product never offers a document that replaces a tax invoice.
+- **Shop details** (`data/shop.json`) are made up for the demo. The real bills stay in `data/private/`.
+
+This supersedes the "no tax maths" non-goal and the "order bill (estimate)" decision above.
+
 ## 8. Left to the builder
 
 - Exact page layout of the bill and packing list. ADR-007 sets the bill format: printable HTML, plus share text.

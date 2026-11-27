@@ -113,3 +113,5 @@ main { max-width: 600px; margin: 0 auto; padding: 16px 16px 190px; }
   .slip.fresh { animation: drop .25s ease-out; }
   @keyframes drop { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
 }
+
+.report { display: block; margin: 6px 0 0; color: var(--head); font-weight: 600; }

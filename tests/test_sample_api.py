@@ -29,10 +29,10 @@ def test_sample_runs_all_steps_without_key(client):
 def test_sample_ends_with_bill_and_balance(client):
     steps = run_sample(client)
     assert steps[7]["bill_number"] == 1
-    assert "₹1,582" in steps[9]["spoken"][0]  # 6,582 billed - 5,000 paid
+    assert "₹1,911" in steps[9]["spoken"][0]  # 6,582 + 5% IGST = 6,911 invoiced - 5,000 paid
     assert "Sri Murugan Tex" in steps[10]["spoken"][0]
     bill = client.get("/api/bills/1").json()
-    assert bill["customer"] == "Kerala Fancy" and bill["total"] == "₹6,582.00"
+    assert bill["customer"] == "Kerala Fancy" and bill["total"] == "₹6,911.00" and bill["interstate"]
     assert [c["name"] for c in client.get("/api/customers").json()] == ["Kerala Fancy", "Sri Murugan Tex"]
 
 

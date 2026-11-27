@@ -18,7 +18,7 @@ def store():
 
 
 def save(store, name, lines, state="open"):
-    return store.save_order(Order(None, name, None, state, None, None, lines))
+    return store.save_order(Order(None, name, "Erode", state, None, None, lines))
 
 
 def test_to_ship_lists_open_and_billed_not_shipped(store):
@@ -46,7 +46,7 @@ def test_customer_summary_has_balance(store):
     shop.record_payment(customer_id, 10000, "upi")
     answer = ask.customer_summary(store, CAT, customer_id)
     assert answer.facts["customer"] == "Kerala Fancy"
-    assert answer.facts["balance_paise"] == 6 * 6500 - 10000
+    assert answer.facts["balance_paise"] == 41000 - 10000  # 390 + 5% GST = 409.50, rounded to Rs 410
     assert answer.facts["open_lines"] == [{"item": "Crop top", "qty": "M 10"}]
 
 

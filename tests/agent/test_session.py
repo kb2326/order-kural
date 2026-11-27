@@ -107,16 +107,35 @@ def test_bad_item_only_reports_problem_and_keeps_nothing(agent):
     assert agent.pending is None and "silk saree" in r.say
 
 
-def test_bill_then_sari_issues_bill_and_debit(agent, store):
-    agent.add_to_order("Kerala Fancy", PALAZZO)
+def test_bill_then_sari_issues_gst_invoice_and_debit(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO, state="Kerala")
     sari(agent)
     agent.heard("bill it", "ta-IN")
     r = agent.bill_order("Kerala Fancy")
-    assert agent.pending.kind == "bill" and "₹1,560" in r.say
+    assert agent.pending.kind == "bill" and "₹1,638" in r.say and "GST" in r.say
     r = sari(agent)
-    assert r.facts["number"] == 1 and store.get_bill(1)["total_paise"] == 156000
+    assert r.facts["number"] == 1 and r.facts["invoice_no"].endswith("/0001")
+    assert store.get_bill(1)["total_paise"] == 163800
     cid = store.find_customers("Kerala Fancy")[0]["id"]
-    assert agent.shop.balance(cid) == 156000
+    assert agent.shop.balance(cid) == 163800
+
+
+def test_bill_without_place_of_supply_asks_for_state(agent):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    r = agent.bill_order("Kerala Fancy")
+    assert agent.pending is None and "state or GSTIN" in r.say
+
+
+def test_gstin_sets_place_of_supply(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO, gstin="32aakfl4333r1zx")
+    sari(agent)
+    assert store.open_orders()[0].gstin == "32AAKFL4333R1ZX" and store.open_orders()[0].state_code == "32"
+
+
+def test_bad_gstin_is_a_problem(agent):
+    r = agent.add_to_order("Kerala Fancy", PALAZZO, gstin="12345")
+    assert "GSTIN not valid" in r.say
 
 
 def test_bill_with_no_open_order(agent):
@@ -125,14 +144,14 @@ def test_bill_with_no_open_order(agent):
 
 
 def test_payment_then_sari_updates_balance(agent, store):
-    agent.add_to_order("Kerala Fancy", PALAZZO)
+    agent.add_to_order("Kerala Fancy", PALAZZO, state="Kerala")
     sari(agent)
     agent.bill_order("Kerala Fancy")
     sari(agent)
     agent.record_payment("Kerala Fancy", 500, "upi")
     r = sari(agent)
-    assert r.facts["balance_paise"] == 156000 - 50000
-    assert "₹1,060" in r.say
+    assert r.facts["balance_paise"] == 163800 - 50000
+    assert "₹1,138" in r.say
 
 
 def test_payment_unknown_customer_asks(agent):
@@ -175,3 +194,25 @@ def test_tool_specs_cover_all_methods():
         params = set(inspect.signature(getattr(AgentSession, name)).parameters) - {"self"}
         spec = next(s for s in TOOL_SPECS if s["function"]["name"] == name)
         assert set(spec["function"]["parameters"]["properties"]) == params
+
+
+def test_add_to_order_accepts_loose_item_shapes(agent):
+    """27 Nov live check: the LLM sent items as strings; the tool crashed and the LLM then spoke unguided."""
+    r = agent.add_to_order("Kerala Fancy", ["plain palazzo"])
+    assert agent.pending is None and "plain palazzo" in r.say  # no quantity -> a spoken problem, not a crash
+    r = agent.add_to_order("Kerala Fancy", '[{"name_as_spoken": "plain palazzo", "item_code": "PPL", '
+                                           '"sizes": {"S": 6}}]')
+    assert agent.pending is not None and "₹390" in r.say
+
+
+def test_call_never_raises_on_garbage(agent):
+    r = agent.call("add_to_order", {"customer": "Kerala Fancy", "items": 42})
+    assert "error" in r.facts or r.say
+
+
+def test_add_to_order_reassembles_streamed_json_fragments(agent):
+    """27 Nov live voice check: Pipecat delivered items as JSON fragments split at commas, plus stray brackets."""
+    fragments = ['[{"name_as_spoken": "plain palazzo"', '"item_code": "PPL"', '"sizes": {"S": 6', '"M": 6',
+                 '"L": 6', '"XL": 6}}]}]']
+    r = agent.add_to_order("Kerala Fancy", fragments)
+    assert agent.pending is not None and "₹1,560" in r.say

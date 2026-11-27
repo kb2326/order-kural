@@ -1,4 +1,6 @@
-"""The printable order bill and packing list at /bill/{number}. Plain HTML, every value escaped."""
+"""The printable GST tax invoice at /bill/{number}, laid out like the shop's own hand-written invoice book
+(header, transport box, billed-to, S.No / Particulars / HSN / Size / Qty / Rate / Amount, tax box, words, bank,
+terms, signatory), followed by the packing list for staff. Every value is escaped."""
 from __future__ import annotations
 
 from html import escape
@@ -6,50 +8,94 @@ from html import escape
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from app.domain.bill import FOOTER, TITLE
+from app.domain.bill import TITLE
 from app.flow.shop import ShopService
 
 pages = APIRouter()
 
 CSS = """
-body{font-family:"Noto Sans",system-ui,sans-serif;color:#1b1b1b;background:#fff;max-width:720px;margin:0 auto;
-     padding:16px}
-h1{font-size:1.3rem;margin:0 0 4px}.sub{color:#555;margin:0 0 14px}
-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;margin:8px 0}
-th,td{border-bottom:1px solid #ddd;padding:6px 4px;text-align:left;vertical-align:top}
-.n{text-align:right;white-space:nowrap}.total td{font-weight:700;font-size:1.1rem;border-bottom:0}
-.foot{color:#555;font-size:.9rem}.void{color:#b3261e;font-weight:700}
-h2{font-size:1.05rem;margin:28px 0 4px;page-break-before:always}
-@media print{.noprint{display:none}}
+:root{--ink:#1f3a93;--line:#7d8fc4}
+body{font-family:"Noto Sans",system-ui,sans-serif;color:#1b1b1b;background:#f4f4f4;margin:0;padding:16px}
+.sheet{max-width:820px;margin:0 auto;background:#fff;border:2px solid var(--ink);color:var(--ink)}
+.grid{display:grid;grid-template-columns:3fr 2fr}.grid>div{padding:8px 10px;border-bottom:1px solid var(--line)}
+.grid>div:first-child{border-right:1px solid var(--line)}
+.shop{font-size:1.35rem;font-weight:700;margin:2px 0}.small{font-size:.82rem}.b{font-weight:700}
+.badge{display:inline-block;background:var(--ink);color:#fff;padding:2px 10px;font-weight:700;letter-spacing:.04em}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;font-size:.9rem}
+th{font-size:.78rem}.n{text-align:right;white-space:nowrap}
+.hand{color:#1b1b1b}
+.void{color:#b3261e;font-weight:700;padding:8px 10px}
+.demo{background:#fff4d6;color:#7a5b00;text-align:center;font-size:.8rem;padding:4px}
+.sign{text-align:right;padding:8px 10px}
+h2{max-width:820px;margin:28px auto 6px;font-size:1.05rem;page-break-before:always}
+.pack{max-width:820px;margin:0 auto;background:#fff}
+.noprint{max-width:820px;margin:0 auto 10px}
+@media print{.noprint{display:none}body{background:#fff;padding:0}}
+@media (max-width:560px){.grid{grid-template-columns:1fr}.grid>div:first-child{border-right:0}}
 """
 
 
 @pages.get("/bill/{number}", response_class=HTMLResponse, include_in_schema=False)
 def bill_page(number: int, request: Request, sample: str = "") -> str:
-    """?sample=<tab session> shows a bill from that tab's sample shop (a link can't carry the sample header)."""
+    """?sample=<tab session> shows an invoice from that tab's sample shop (a link can't carry the sample header)."""
     svc = request.app.state.sample_sessions.get(sample.strip()[:64]) if sample else None
     svc = svc or request.app.state.pieces
     b = ShopService(svc.store, svc.catalog).bill_view(number)
     if b is None:
         raise HTTPException(status_code=404, detail="Bill not found")
     e = lambda v: escape(str(v if v is not None else ""))  # noqa: E731
-    rows = "".join(f"<tr><td>{i}</td><td>{e(l['name'])}<br><small>{e(l['qty_text'])} · HSN {e(l['hsn'])}</small></td>"
-                   f"<td class=n>{l['quantity']}</td><td class=n>{e(l['rate'])}</td><td class=n>{e(l['amount'])}</td>"
-                   f"</tr>" for i, l in enumerate(b["lines"], 1))
-    packing = "".join(f"<tr><td>{e(p['item'])}</td><td>{e(p['size'])}</td><td class=n>{p['qty']}</td>"
-                      f"<td>☐</td></tr>" for p in b["packing"])
-    who = e(b["customer"]) + (f", {e(b['city'])}" if b["city"] else "")
-    void = "<p class=void>This bill was undone (voided).</p>" if b["voided"] else ""
+    shop, m = b["shop"], b["money"]
+    rows = "".join(
+        f"<tr class=hand><td>{l['sno']}</td><td>{e(l['name'])}</td><td>{e(l['hsn'])}</td><td>{e(l['size'])}</td>"
+        f"<td class=n>{l['qty']}</td><td class=n>{e(l['rate'])}</td><td class=n>{e(l['amount'])}</td></tr>"
+        for l in b["lines"])
+    taxes = "".join(f"<tr><td colspan=6 class=n>{e(t['label'])}</td><td class=n>{e(t['amount'])}</td></tr>"
+                    for t in b["tax_lines"])
+    packing = "".join(f"<tr><td>{e(p['item'])}</td><td>{e(p['size'])}</td><td class=n>{p['qty']}</td><td>☐</td></tr>"
+                      for p in b["packing"])
+    terms = "".join(f"<li>{e(t)}</li>" for t in shop["terms"])
+    bank = shop["bank"]
+    eway = "E-way bill required (value above ₹50,000): no. ______" if b["eway_bill_needed"] else "E-way bill no.: —"
+    void = "<div class=void>This invoice was undone (voided) in the khata.</div>" if b["voided"] else ""
     return f"""<!doctype html><html lang=en><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1"><title>Bill {number} · Order Kural</title>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Invoice {e(b['invoice_no'])} · Order Kural</title>
 <style>{CSS}</style></head><body>
 <p class=noprint><a href="/">← Back</a> · <button onclick="print()">Print</button></p>
-<h1>{TITLE} No. {number}</h1><p class=sub>{who} · {e(b['date'])}</p>{void}
-<table><thead><tr><th>#</th><th>Item</th><th class=n>Qty</th><th class=n>Rate</th><th class=n>Amount</th></tr></thead>
-<tbody>{rows}<tr class=total><td></td><td>Total</td><td></td><td></td><td class=n>{e(b['total'])}</td></tr></tbody>
-</table>
-<p>Transport: {e(b['transport'] or 'not set')} · Payment: {e(b['payment'] or 'not set')}</p>
-<p class=foot>{FOOTER}</p>
-<h2>Packing list · Bill {number} · {who}</h2>
-<table><thead><tr><th>Item</th><th>Size</th><th class=n>Qty</th><th>Packed</th></tr></thead><tbody>{packing}</tbody>
-</table></body></html>"""
+<div class=sheet>
+<div class=demo>Demo shop details (made up) · generated by Order Kural</div>
+<div class=grid>
+ <div><span class=small>Cell: {e(shop['phone'])}</span><p class=shop>{e(shop['name'])}</p>
+  <span class=small>{e(shop['address'])}</span><br>
+  <span class="small b">GSTIN: {e(shop['gstin'])} · STATE: {e(shop['state'].upper())} · CODE: {e(shop['state_code'])}</span></div>
+ <div class=small>Transport: <span class=hand>{e(b['transport'] or '—')}</span><br>
+  Goods to: <span class=hand>{e(b['buyer_city'] or '—')}</span><br>
+  Payment: <span class=hand>{e((b['payment'] or '—').upper())}</span><br>{eway}</div>
+ <div><span class="badge">{TITLE}</span><br><span class=small>Invoice No. </span><span class="hand b">{e(b['invoice_no'])}</span>
+  <br><span class=small>BILLED TO M/s.</span> <span class="hand b">{e(b['buyer_name'])}</span><br>
+  <span class=hand>{e(b['buyer_city'] or '')}</span><br>
+  <span class=small>GSTIN: </span><span class=hand>{e(b['buyer_gstin'] or 'Unregistered (B2C)')}</span></div>
+ <div class=small>Date: <span class=hand>{e(b['date'])}</span><br>
+  Place of supply: <span class=hand>{e(b['place_of_supply_name'])}</span><br>
+  State code: <span class=hand>{e(b['place_of_supply'])}</span></div>
+</div>
+{void}
+<table><thead><tr><th>S.No.</th><th>Particulars</th><th>HSN Code</th><th>Size</th><th class=n>Qty</th>
+<th class=n>Rate Rs.</th><th class=n>Amount Rs.</th></tr></thead>
+<tbody>{rows}
+<tr><td colspan=4>E.&amp;O.E. · Total No. of Pcs: <b>{b['total_pcs']}</b></td><td colspan=2 class=n>TOTAL</td>
+<td class=n>{e(m['taxable_paise'])}</td></tr>{taxes}
+<tr><td colspan=6 class=n>Round off</td><td class=n>{e(m['round_off_paise'])}</td></tr>
+<tr><td colspan=6 class="n b">Grand Total</td><td class="n b">{e(m['grand_total_paise'])}</td></tr>
+</tbody></table>
+<div class=grid>
+ <div class=small>Name: {e(bank['name'])}<br>Bank: {e(bank['bank'])}<br>Branch: {e(bank['branch'])}<br>
+  A/c No: {e(bank['account'])}<br>IFSC: {e(bank['ifsc'])}</div>
+ <div class=small>Terms &amp; Conditions<ol>{terms}</ol></div>
+</div>
+<div class=grid><div>Rupees <span class=hand>{e(b['amount_in_words'])}</span></div>
+ <div class=sign>For {e(shop['name'])}<br><br><span class=small>Authorised Signatory</span></div></div>
+</div>
+<h2>Packing list · {e(b['invoice_no'])} · {e(b['buyer_name'])}</h2>
+<table class=pack><thead><tr><th>Item</th><th>Size</th><th class=n>Qty</th><th>Packed</th></tr></thead>
+<tbody>{packing}</tbody></table></body></html>"""

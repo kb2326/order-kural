@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import importlib
+import io
 import json
 import os
 import re
@@ -13,7 +15,7 @@ from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from app.agent import say
@@ -254,6 +256,32 @@ def get_bill(number: int, request: Request) -> dict:
     if view is None:
         raise HTTPException(status_code=404, detail="Bill not found")
     return view
+
+
+REPORT_COLUMNS = ["Invoice no", "Date", "Buyer", "Buyer GSTIN", "Type", "Place of supply", "Taxable value",
+                  "IGST", "CGST", "SGST", "Round off", "Invoice value", "Total pcs", "HSN"]
+
+
+@router.get("/reports/gst.csv")
+def gst_report(month: str, request: Request) -> Response:
+    """The month's invoices for the auditor (GSTR-1 preparation), one row per invoice; voided invoices left out."""
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(status_code=422, detail="month must look like 2026-11")
+    rupees = lambda p: f"{p / 100:.2f}"  # noqa: E731
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(REPORT_COLUMNS)
+    for row in _svc(request).store.all_bills():
+        inv = json.loads(row["lines_json"])
+        if row["voided"] or not inv.get("date", "").startswith(month):
+            continue
+        writer.writerow([inv["invoice_no"], inv["date"], inv["buyer_name"], inv["buyer_gstin"] or "",
+                         "B2B" if inv["b2b"] else "B2C", inv["place_of_supply"], rupees(inv["taxable_paise"]),
+                         rupees(inv["igst_paise"]), rupees(inv["cgst_paise"]), rupees(inv["sgst_paise"]),
+                         rupees(inv["round_off_paise"]), rupees(inv["grand_total_paise"]), inv["total_pcs"],
+                         " ".join(sorted({l["hsn"] for l in inv["lines"]}))])
+    return Response(out.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="gst-invoices-{month}.csv"'})
 
 
 @router.get("/customers")

@@ -1,16 +1,27 @@
-"""Shop actions after an order is confirmed: bill it, and (Task 6) payments, shipping and undo."""
+"""Shop actions after an order is confirmed: the GST tax invoice, payments into the khata, shipping and undo."""
 from __future__ import annotations
 
 import json
 from dataclasses import asdict
 from datetime import date
+from pathlib import Path
 
-from app.domain.bill import Bill, BillLine, make_bill, share_text
+from app.domain.bill import (STATE_NAMES, Invoice, InvoiceLine, make_invoice, packing_list, share_text,
+                             tax_lines)
 from app.domain.catalog import Catalog
 from app.domain.khata import balance
 from app.domain.money import format_inr
+from app.domain.order import Order
 from app.domain.rules import Payment
 from app.store.db import Store
+
+
+SHOP_FILE = Path(__file__).parent.parent.parent / "data" / "shop.json"
+
+
+def load_shop() -> dict:
+    """The selling shop's own details (made-up demo values in data/shop.json)."""
+    return json.loads(SHOP_FILE.read_text(encoding="utf-8"))
 
 
 class ShopError(Exception):
@@ -18,38 +29,43 @@ class ShopError(Exception):
 
 
 class ShopService:
-    def __init__(self, store: Store, catalog: Catalog):
+    def __init__(self, store: Store, catalog: Catalog, shop: dict | None = None):
         self.store = store
         self.catalog = catalog
+        self.shop = shop or load_shop()
 
-    def _on_billed(self, bill: Bill, customer_id: int) -> None:
-        self.store.add_ledger(customer_id=customer_id, kind="bill", amount_paise=bill.total_paise,
-                              ref_bill=bill.number)
+    def _on_billed(self, inv: Invoice, customer_id: int) -> None:
+        self.store.add_ledger(customer_id=customer_id, kind="bill", amount_paise=inv.grand_total_paise,
+                              ref_bill=inv.number)
+
+    def preview_invoice(self, order: Order) -> Invoice:
+        """The invoice this order would get now (for the read-back before "sari"); raises ShopError if it can't."""
+        if not order.lines:
+            raise ShopError(f"Nothing to bill for {order.customer_name}")
+        try:
+            return make_invoice(order, self.catalog, self.shop, self.store.next_bill_number(),
+                                date.today().isoformat())
+        except ValueError as e:
+            raise ShopError(str(e)) from e
 
     def bill_view(self, number: int) -> dict | None:
-        """Everything the bill page and the share button need, from the stored (frozen) bill."""
+        """Everything the invoice page and the share button need, from the stored (frozen) invoice."""
         row = self.store.get_bill(number)
         if row is None:
             return None
         order = self.store.get_order(row["order_id"])
-        lines = [BillLine(**l) for l in json.loads(row["lines_json"])]
-        bill = Bill(number=number, order_id=row["order_id"], customer_name=order.customer_name, city=order.city,
-                    transport=order.transport, payment=order.payment, lines=lines, total_paise=row["total_paise"],
-                    created_at=row["created_at"][:10])
-        packing = []  # qty_text is "S 6, M 6" for sized lines (labels may contain spaces) or just "24"
-        for l in lines:
-            if l.qty_text.isdigit():
-                packing.append({"item": l.name, "size": "-", "qty": l.quantity})
-                continue
-            for part in l.qty_text.split(", "):
-                size, _, qty = part.rpartition(" ")
-                packing.append({"item": l.name, "size": size, "qty": int(qty)})
-        return {"number": number, "customer": bill.customer_name, "city": bill.city, "date": bill.created_at,
-                "transport": bill.transport, "payment": bill.payment, "voided": bool(row["voided"]),
-                "order_state": order.state, "total_paise": bill.total_paise, "total": format_inr(bill.total_paise),
+        data = json.loads(row["lines_json"])
+        inv = Invoice(**{**data, "lines": [InvoiceLine(**l) for l in data["lines"]]})
+        money = {k: format_inr(getattr(inv, k)) for k in ("taxable_paise", "cgst_paise", "sgst_paise", "igst_paise",
+                                                           "round_off_paise", "grand_total_paise")}
+        return {**asdict(inv), "money": money, "voided": bool(row["voided"]), "order_state": order.state,
+                "place_of_supply_name": STATE_NAMES.get(inv.place_of_supply, inv.place_of_supply),
+                "tax_lines": [{"label": n, "amount": format_inr(p)} for n, p in tax_lines(inv)],
                 "lines": [{**asdict(l), "rate": format_inr(l.rate_paise), "amount": format_inr(l.amount_paise)}
-                          for l in lines],
-                "packing": packing, "share_text": share_text(bill)}
+                          for l in inv.lines],
+                "packing": [{"item": i, "size": s, "qty": q} for i, s, q in packing_list(order, self.catalog)],
+                "shop": self.shop, "share_text": share_text(inv, self.shop),
+                "customer": inv.buyer_name, "total": format_inr(inv.grand_total_paise)}
 
     def balance(self, customer_id: int) -> int:
         return balance(self.store.ledger_for(customer_id))
@@ -89,20 +105,18 @@ class ShopService:
                 return f"Bill {bill['number']} undone"
             return f"Payment of {format_inr(target['amount_paise'])} undone"
 
-    def issue_bill(self, order_id: int) -> Bill:
+    def issue_bill(self, order_id: int) -> Invoice:
         with self.store.tx():
             order = self.store.get_order(order_id)
             if order is None:
                 raise ShopError("No such order")
             if order.state != "open":
                 raise ShopError(f"Order for {order.customer_name} is already {order.state}")
-            if not order.lines:
-                raise ShopError(f"Nothing to bill for {order.customer_name}")
-            bill = make_bill(order, self.catalog, self.store.next_bill_number(), date.today().isoformat())
+            inv = self.preview_invoice(order)
             customer_id = self.store.customer_id_of_order(order_id)
-            self.store.save_bill(number=bill.number, order_id=order_id, customer_id=customer_id,
-                                 total_paise=bill.total_paise,
-                                 lines_json=json.dumps([asdict(l) for l in bill.lines], ensure_ascii=False))
+            self.store.save_bill(number=inv.number, order_id=order_id, customer_id=customer_id,
+                                 total_paise=inv.grand_total_paise,
+                                 lines_json=json.dumps(asdict(inv), ensure_ascii=False))
             self.store.set_order_state(order_id, "billed")
-            self._on_billed(bill, customer_id)
-        return bill
+            self._on_billed(inv, customer_id)
+        return inv

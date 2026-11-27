@@ -82,9 +82,10 @@ function renderSlip(ui) {
     const details = [p.transport && `Transport: ${p.transport}`, p.payment && `Payment: ${p.payment}`].filter(Boolean);
     if (details.length) parts.push(el("p", { class: "needed" }, details.join(" · ")));
     if (p.problems && p.problems.length) parts.push(el("ul", { class: "problems" }, ...p.problems.map((x) => el("li", {}, x))));
-    parts.push(el("p", { class: "foot" }, "Tax as per final invoice"));
+    parts.push(el("p", { class: "foot" }, "GST is added on the tax invoice when you say “bill it”."));
   } else if (p.kind === "bill") {
-    parts.push(el("p", { class: "big" }, `Make the bill: ${money(p.total_paise)}`));
+    parts.push(el("p", { class: "big" }, `GST tax invoice: ${money(p.total_paise)}`),
+      el("p", { class: "needed" }, `Taxable ${money(p.taxable_paise)} + ${p.interstate ? "IGST" : "CGST + SGST"} ${money(p.tax_paise)} · ${p.b2b ? "B2B (GSTIN)" : "B2C (no GSTIN)"}`));
   } else if (p.kind === "payment") {
     parts.push(el("p", { class: "big" }, `Payment received: ${money(p.amount_paise)} by ${String(p.mode).toUpperCase()}`));
   } else if (p.kind === "ship") {
@@ -131,11 +132,12 @@ async function refreshPanels() {
       el("span", { class: "sub" }, [o.city, `${o.line_count} ${o.line_count === 1 ? "item" : "items"}`].filter(Boolean).join(" · "))))
       : [el("p", { class: "muted" }, "No open orders.")]));
     $("panel-bills").replaceChildren(...(bills.length ? bills.map((b) => el("div", { class: "row" },
-      el("a", { class: "name", href: billLink(b.number), target: "_blank" }, `Bill ${b.number} · ${b.customer}`),
+      el("a", { class: "name", href: billLink(b.number), target: "_blank" }, `Invoice ${b.number} · ${b.customer}`),
       el("span", { class: "amt" }, b.total),
       el("span", { class: "sub" }, b.voided ? "undone" : b.created_at.slice(0, 10)),
       el("span", { class: "row-actions" }, shareButton(b.number))))
-      : [el("p", { class: "muted" }, "No bills yet. Say “bill it” after an order is saved.")]));
+      : [el("p", { class: "muted" }, "No invoices yet. Say “bill it” after an order is saved.")]),
+      reportLink());
     $("panel-khata").replaceChildren(...(customers.length ? customers.map((c) => {
       const undo = el("button", { class: "link" }, "Undo last");
       undo.addEventListener("click", () => undoLast(c));
@@ -145,6 +147,21 @@ async function refreshPanels() {
         el("span", { class: "row-actions" }, undo));
     }) : [el("p", { class: "muted" }, "No customers yet.")]));
   } catch (e) { /* panels are a convenience; the conversation still works */ }
+}
+
+function reportLink() {
+  const month = new Date().toISOString().slice(0, 7);
+  const a = el("a", { class: "report", href: `/api/reports/gst.csv?month=${month}`, download: "" },
+    `⤓ Monthly GST report for the auditor (${month})`);
+  if (state.mode === "sample") {
+    a.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      const res = await fetch(a.getAttribute("href"), { headers: { "X-Sample-Session": SAMPLE_SESSION } });
+      const url = URL.createObjectURL(await res.blob());
+      Object.assign(document.createElement("a"), { href: url, download: `gst-invoices-${month}.csv` }).click();
+    });
+  }
+  return a;
 }
 
 function shareButton(number) {
@@ -253,14 +270,14 @@ async function sampleNext() {
     s.spoken.forEach((t) => bot(t));
     if (s.bill_number) {
       const b = bubble("bot", "");
-      b.querySelector(".voice").append(el("a", { href: billLink(s.bill_number), target: "_blank" }, `Open bill ${s.bill_number} and packing list`));
+      b.querySelector(".voice").append(el("a", { href: billLink(s.bill_number), target: "_blank" }, `Open tax invoice ${s.bill_number} and packing list`));
     }
     renderSlip(s.slip);
     refreshPanels();
     playInOrder([s.user_audio_url, s.bot_audio_url]);
     if (s.index === s.total) {
       $("sample-next").hidden = true;
-      bot("That is the whole flow: order in pieces, sari, bill, khata, and a question. Leave the sample to use the real shop.");
+      bot("That is the whole flow: order in pieces, sari, GST invoice, khata, and a question. Leave the sample to use the real shop.");
     }
   } catch (e) {
     if (e.status === 409) $("sample-next").hidden = true;
