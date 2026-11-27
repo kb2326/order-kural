@@ -165,6 +165,13 @@ T: dict[str, dict[str, str]] = {
         "ml-IN": "{customer} ന് തുറന്ന ഓർഡർ ഒന്നുമില്ല.",
         "kn-IN": "{customer} ಗೆ ತೆರೆದ ಆರ್ಡರ್ ಇಲ್ಲ.",
     },
+    "not_done": {
+        "en-IN": "That was not added or saved. Please say it again.",
+        "ta-IN": "அது சேர்க்கப்படல, சேமிக்கப்படல. திரும்ப சொல்லுங்க.",
+        "hi-IN": "वह जोड़ा या सेव नहीं हुआ. फिर से बोलिए.",
+        "ml-IN": "അത് ചേർത്തിട്ടില്ല, സേവ് ചെയ്തിട്ടില്ല. വീണ്ടും പറയൂ.",
+        "kn-IN": "ಅದನ್ನು ಸೇರಿಸಿಲ್ಲ, ಉಳಿಸಿಲ್ಲ. ಮತ್ತೆ ಹೇಳಿ.",
+    },
     "cannot_answer": {
         "en-IN": "I can answer: what is to ship, a customer's order or balance, and item counts.",
         "ta-IN": "நான் சொல்லக்கூடியது: அனுப்ப வேண்டியது, ஒரு கஸ்டமர் ஆர்டர் அல்லது பாக்கி, ஐட்டம் எண்ணிக்கை.",

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from app.agent import say, words
 from app.agent.prompt import system_prompt
 from app.agent.session import AgentSession
 from app.agent.tools import TOOL_SPECS
@@ -94,5 +95,8 @@ class TextBrain:
         except (httpx.HTTPError, KeyError, IndexError, ValueError):
             result.error = FAIL
             result.spoken = [FAIL]
+        if not result.error and result.spoken and words.unbacked_claim(result.spoken[-1], bool(result.tool_calls)):
+            # The AI claimed an action no tool performed: say so in code, so the owner is never misled.
+            result.spoken.append(say.render("not_done", {}, self.session.language))
         result.ui = self.session.slip()
         return result

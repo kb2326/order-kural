@@ -2,6 +2,7 @@
 order and the AI cannot confirm on its own."""
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 YES = {"sari", "seri", "saari", "aamaa", "aama", "haan", "ha", "theek hai", "ok", "okay", "confirm", "correct",
@@ -19,6 +20,18 @@ def _tokens(text: str) -> list[str]:
 def _has(tokens: list[str], words: set[str]) -> bool:
     joined = f" {' '.join(tokens)} "
     return any(f" {w} " in joined for w in words)
+
+
+# Phrases where the AI says it did something (added / saved / put / set) in Tamil, Hindi, English and Malayalam.
+CLAIM = re.compile(r"\b(add|added|adding|save|saved|saving|billed)\b|panren|panniten|panniduren|pannuren|potten|"
+                   r"podaren|seththuten|serthuten|சேர்த்து|சேர்த்தேன்|போட்டேன்|जोड़|जोड़|सेव कर|ചേർത്ത",
+                   re.IGNORECASE)
+
+
+def unbacked_claim(text: str, tool_called: bool) -> bool:
+    """True when the AI's own words claim an action but no tool ran in that turn (27 Nov live check: it said
+    'girls pant ... add panren' and saved nothing). The caller then says, in code, that nothing was added."""
+    return not tool_called and bool(CLAIM.search(text or ""))
 
 
 def classify(text: str) -> Literal["yes", "no", "other"]:

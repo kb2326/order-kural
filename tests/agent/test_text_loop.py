@@ -113,3 +113,11 @@ def test_history_kept_across_turns():
     roles = [m["role"] for m in script.requests[1]["messages"]]
     assert roles[:5] == ["system", "user", "assistant", "tool", "assistant"] and roles[-1] == "user"
     assert "₹780" in r.spoken[0]
+
+
+def test_unbacked_claim_is_corrected_in_code():
+    """27 Nov live check: the LLM said 'girls pant ... add panren' without calling a tool."""
+    b, _ = brain(Script(text("Kerala Fancy-ku girls pant 50 piece add panren.")))
+    r = b.turn("girls pant 50 piece", "ta-IN")
+    from app.agent import say
+    assert r.spoken[-1] == say.render("not_done", {}, "ta-IN") and len(r.spoken) == 2

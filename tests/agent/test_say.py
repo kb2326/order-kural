@@ -22,6 +22,7 @@ FACTS = {
                          "balance_paise": 1655200},
     "item_count": {"item": "Girls pant", "quantity": 50, "days": 7},
     "cannot_answer": {},
+    "not_done": {},
     "problems": {"customer": "Kerala Fancy", "problems": ["Unknown item: silk saree"]},
     "no_open_order": {"customer": "Kerala Fancy"},
 }
