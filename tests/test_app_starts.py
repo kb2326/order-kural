@@ -17,3 +17,8 @@ def test_main_screen_has_banner_text(client):
     html = client.get("/").text
     assert "Order Kural" in html
     assert "Sarvam API key not set: live voice is off." in html
+
+
+def test_static_assets_served(client):
+    assert client.get("/static/app.js").status_code == 200
+    assert client.get("/static/styles.css").status_code == 200

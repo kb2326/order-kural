@@ -5,8 +5,10 @@
 A voice-first order book for small garment wholesalers in Tirupur, Tamil Nadu. Built for the Scaler × Wispr
 "India Runs on Voice" hackathon (track: livelihoods and small business).
 
-> **Status:** S0 (app starts with no keys) and S1 (order engine + sample conversation) in progress. Live voice (S2–S4),
-> bill and khata (S5) come next.
+> **Status:** working now: the app starts with no keys (S0), and the order engine plus the sample conversation run end
+> to end (S1). Coming next: live voice in Tamil and other languages (S2–S4), then the bill and khata (S5).
+
+<p align="center"><img src="docs/round2/screens/s1-sample.png" alt="Three voice pieces from Kerala Fancy become one order of ₹8,328.60" width="360"></p>
 
 ---
 
@@ -100,9 +102,35 @@ flowchart LR
     STORE --> DB[("orderkural.db")]
 ```
 
-- **domain** is pure Python with no network: the same input always gives the same totals.
-- **providers** sit behind small interfaces, so another speech engine (for example Wispr's API) can plug in later.
-- **No key?** The providers report "not set", and the sample conversation feeds saved AI results into the same flow.
+### The components, in plain words
+
+| Component | Where | What it does, simply |
+|---|---|---|
+| **Screen** | `app/static/` | A WhatsApp-style page. Each voice piece is a chat bubble; the proposed change appears as a bill-book page with **Sari ✔** and **Vendaam ✖** buttons. Plain HTML and JavaScript, no build step. |
+| **API** | `app/api.py` | The doors the screen knocks on: play the next sample piece, confirm or discard a piece, list orders. Sends money both as exact paise and as "₹8,328.60". |
+| **Piece flow** | `app/flow/pieces.py` | The traffic controller. Takes one voice piece, finds which customer's open order it belongs to, works out the change, and **holds it until the owner says "sari"**. Confirming twice, or confirming a discarded piece, is refused. |
+| **Read-back** | `app/flow/readback.py` | Turns the change into one sentence to say back: "Added: Crop top S 6, M 6, L 6 at ₹75. Order total ₹3,131.10 with GST. Say sari to confirm." |
+| **Item list** | `data/items.json`, `app/domain/catalog.py` | The shop's items with codes, list rates and minimum quantities, from the real notebook. Understands spoken names and near-misses ("print palazo" → Print palazzo). |
+| **AI output format** | `app/domain/changes.py` | The exact shape the AI must answer in: which customer, and a list of changes (`add_line`, `change_line`, `remove_line`, `set_field`). Anything else is rejected, e.g. a negative quantity. |
+| **Order engine** | `app/domain/order.py` | Applies a change list to an order. The same item twice merges into one line; an unknown item is reported, never guessed. |
+| **Rules** | `app/domain/rules.py` | The maths, in code: line totals, GST (5% up to ₹2,500 a piece, else 18%), minimum-quantity and off-list-rate warnings, what's still missing (transport, payment). |
+| **Store** | `app/store/db.py` | A SQLite file. Keeps customers, orders, lines, every voice piece and every applied change, so each line can be traced to the voice note it came from. |
+| **Sample conversation** | `app/sample/conversation.json` | Three saved voice pieces with saved AI answers, so anyone can see the full flow **without an API key**. |
+| **Providers** (next) | `app/providers/` | Speech-to-text, AI and voice reply from Sarvam, each behind a small interface so another engine (for example Wispr's API) can plug in later. |
+
+```mermaid
+flowchart TB
+    V["Voice piece<br/>(live or sample)"] --> F["Piece flow"]
+    F -->|"open orders"| S[("Store")]
+    F -->|"change list"| E["Order engine"]
+    E --> R["Rules: rates, minimums, GST"]
+    E --> C["Item list"]
+    F --> RB["Read-back sentence"]
+    RB --> O{"Owner"}
+    O -->|"sari"| SAVE["Order saved,<br/>line linked to its voice piece"]
+    O -->|"vendaam"| DROP["Nothing changes"]
+    SAVE --> S
+```
 
 ## Order life cycle
 
