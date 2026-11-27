@@ -27,6 +27,8 @@ from app.providers.sarvam_stt import SarvamSTT
 from app.agent.session import AgentSession
 from app.agent.text_loop import TextBrain
 from app.domain.changes import PieceResult
+from app.domain.gst import STATE_NAMES, state_code_for
+from app.domain.order import describe
 from app.flow import ask
 from app.flow.shop import ShopError, ShopService
 from app.domain.money import format_inr
@@ -282,6 +284,43 @@ def gst_report(month: str, request: Request) -> Response:
                          " ".join(sorted({l["hsn"] for l in inv["lines"]}))])
     return Response(out.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="gst-invoices-{month}.csv"'})
+
+
+@router.get("/books")
+def books(request: Request) -> dict:
+    """The shop's two paper notebooks as records: the customer book and the order book. Every order line keeps the
+    words (voice piece) it came from."""
+    svc = _svc(request)
+    shop = ShopService(svc.store, svc.catalog)
+    store = svc.store
+    orders = store.orders_in_states(["open", "billed", "shipped", "cancelled"])
+    created = store.order_dates()
+    said: dict[int, str] = {}
+    out_orders = []
+    for o in sorted(orders, key=lambda o: o.id, reverse=True):
+        bill = store.bill_for_order(o.id)
+        lines = []
+        for l in o.lines:
+            if l.source_piece_id and l.source_piece_id not in said:
+                piece = store.get_piece(l.source_piece_id)
+                said[l.source_piece_id] = piece["transcript"] if piece else ""
+            item = svc.catalog.get(l.item_code)
+            lines.append({"item": item.name if item else l.item_code, "qty": describe(l), "quantity": l.quantity,
+                          "rate": format_inr(l.rate_paise), "amount": format_inr(l.quantity * l.rate_paise),
+                          "said": said.get(l.source_piece_id, "")})
+        out_orders.append({"id": o.id, "customer": o.customer_name, "city": o.city, "date": created.get(o.id, "")[:10],
+                           "state": o.state, "transport": o.transport, "payment": o.payment,
+                           "invoice_no": json.loads(bill["lines_json"])["invoice_no"] if bill else None,
+                           "lines": lines})
+    customers = []
+    for c in store.all_customers():
+        mine = [o for o in orders if o.customer_name == c["name"]]
+        code = next((o.state_code for o in mine if o.state_code), None) or state_code_for(None, c["city"])
+        bal = shop.balance(c["id"])
+        customers.append({**c, "state": STATE_NAMES.get(code, "") if code else "", "gstin": next(
+            (o.gstin for o in mine if o.gstin), None), "orders": len(mine), "balance_paise": bal,
+            "balance": format_inr(bal)})
+    return {"customers": customers, "orders": out_orders}
 
 
 @router.get("/customers")

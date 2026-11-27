@@ -112,3 +112,15 @@ def test_open_orders_list_shows_value_before_gst(client):
     agent.confirm_pending()
     [row] = client.get("/api/orders").json()
     assert row["total_paise"] == 78000 and row["total"] == "₹780.00"  # GST is added only on the invoice
+
+
+def test_books_show_customer_book_and_order_book(billed):
+    """The two paper notebooks, as records: customers (book 1) and orders with lines (book 2), each line linked
+    to the words it came from."""
+    books = billed.get("/api/books").json()
+    [c] = books["customers"]
+    assert c["name"] == "Kerala Fancy" and c["orders"] == 1 and c["balance"] == "₹319.00" and c["state"] == "Kerala"
+    [o] = books["orders"]
+    assert o["customer"] == "Kerala Fancy" and o["state"] == "billed" and o["invoice_no"].startswith("KG/")
+    [line] = o["lines"]
+    assert line["item"] == "Plain palazzo" and line["qty"] == "S 6, M 6" and line["said"] == "Kerala Fancy palazzo"

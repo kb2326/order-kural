@@ -126,7 +126,9 @@ function billLink(n) {
 
 async function refreshPanels() {
   try {
-    const [orders, bills, customers] = await Promise.all([api("/api/orders"), api("/api/bills"), api("/api/customers")]);
+    const [orders, bills, customers, books] = await Promise.all([api("/api/orders"), api("/api/bills"),
+      api("/api/customers"), api("/api/books")]);
+    renderBooks(books);
     $("panel-orders").replaceChildren(...(orders.length ? orders.map((o) => el("div", { class: "row" },
       el("span", { class: "name" }, o.customer_name), el("span", { class: "amt" }, o.total),
       el("span", { class: "sub" }, [o.city, `${o.line_count} ${o.line_count === 1 ? "item" : "items"}`].filter(Boolean).join(" · "))))
@@ -162,6 +164,33 @@ function reportLink() {
     });
   }
   return a;
+}
+
+// The two paper notebooks, as records: the customer book and the order book (each line keeps the words it came from).
+function renderBooks(books) {
+  const box = $("panel-books");
+  if (!books.customers.length) { box.replaceChildren(el("p", { class: "muted" }, "Nothing in the books yet.")); return; }
+  const customerRows = books.customers.map((c) => el("tr", {},
+    el("td", {}, c.name), el("td", {}, [c.city, c.state].filter(Boolean).join(", ")),
+    el("td", {}, c.gstin || "—"), el("td", { class: "num" }, c.orders), el("td", { class: "num" }, c.balance)));
+  const orderCards = books.orders.map((o) => el("div", { class: "book-order" },
+    el("div", { class: "book-head" },
+      el("b", {}, `#${o.id} ${o.customer}`),
+      el("span", {}, [o.date, o.state, o.invoice_no].filter(Boolean).join(" · "))),
+    el("table", { class: "book" }, el("tbody", {}, ...o.lines.map((l, i) => el("tr", {},
+      el("td", {}, l.item, el("span", { class: "said" },
+        l.said && (i === 0 || l.said !== o.lines[i - 1].said) ? `🎤 “${l.said}”` : "")),
+      el("td", {}, l.qty), el("td", { class: "num" }, l.amount))))),
+    el("p", { class: "sub" }, [o.transport && `Transport ${o.transport}`, o.payment && `Payment ${o.payment}`]
+      .filter(Boolean).join(" · "))));
+  box.replaceChildren(
+    el("h3", { class: "book-title" }, "Customer book"),
+    el("table", { class: "book" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Customer"), el("th", {}, "Place"), el("th", {}, "GSTIN"),
+        el("th", { class: "num" }, "Orders"), el("th", { class: "num" }, "Balance"))),
+      el("tbody", {}, ...customerRows)),
+    el("h3", { class: "book-title" }, "Order book"),
+    ...orderCards);
 }
 
 function shareButton(number) {

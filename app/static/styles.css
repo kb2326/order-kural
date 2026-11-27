@@ -115,3 +115,16 @@ main { max-width: 600px; margin: 0 auto; padding: 16px 16px 190px; }
 }
 
 .report { display: block; margin: 6px 0 0; color: var(--head); font-weight: 600; }
+
+/* Books: the two paper notebooks as records */
+.book-title { font-size: .95rem; margin: 14px 0 6px; color: #3b4a54; }
+table.book { width: 100%; border-collapse: collapse; background: var(--paper); color: var(--ink);
+  font-variant-numeric: tabular-nums; font-size: .88rem; border-left: 4px double var(--ink); }
+table.book th, table.book td { padding: 5px 6px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: top; }
+table.book th { font-size: .75rem; color: #5d6f9e; }
+table.book .num { text-align: right; white-space: nowrap; }
+.book-order { background: #fff; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
+.book-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .9rem; margin-bottom: 4px; }
+.book-head span { color: var(--muted); font-size: .8rem; }
+.said { display: block; font-size: .75rem; color: var(--muted); font-style: italic; }
+table.book td:nth-child(2) { white-space: nowrap; }

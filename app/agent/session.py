@@ -85,6 +85,7 @@ class AgentSession:
         self.last_user_text = ""
         self.recent_heard: list[str] = []  # the last few things the owner said, for grounding checks
         self.turn = 0
+        self.since_saved: list[str] = []  # everything said since the last save or cancel: the words behind a piece
         self._last_call: tuple | None = None  # (turn, name, args) of the last tool call, and its result
 
     # ---- plumbing ------------------------------------------------------------------------------------------
@@ -93,6 +94,7 @@ class AgentSession:
         self.last_user_text = text
         self.recent_heard = (self.recent_heard + [text])[-RECENT_TURNS:]
         self.turn += 1  # a new thing said: the same tool call is allowed again
+        self.since_saved = (self.since_saved + [text])[-RECENT_TURNS:]
         if language:
             self.language = say.lang(language)
 
@@ -196,7 +198,8 @@ class AgentSession:
         city = city or (old.city if old else None)
         result = PieceResult(intent="order_changes", changes=combined,
                              customer=CustomerRef(name_as_spoken=customer, city=city))
-        proposal: Proposal = self.pieces.propose(self.last_user_text, result, source=self.source)
+        said_text = " | ".join(t for t in self.since_saved if words.classify(t) != "yes") or self.last_user_text
+        proposal: Proposal = self.pieces.propose(said_text, result, source=self.source)
         if proposal.ask_customer:
             near = self._near_customer(customer) if proposal.readback.startswith("Is this for") else None
             return self._say("ask_customer", {"near": near}, wrote=False)
@@ -300,6 +303,7 @@ class AgentSession:
         if words.classify(self.last_user_text) != "yes":
             return self._say("need_yes", {"customer": p.customer}, wrote=False)
         self.pending = None  # cleared first, so the slip returned with the result shows nothing waiting
+        self.since_saved = []
         try:
             return self._apply(p)
         except ShopError as e:
@@ -327,6 +331,7 @@ class AgentSession:
         if p.kind == "order" and p.piece_id:
             self.pieces.discard(p.piece_id)
         self.pending = None
+        self.since_saved = []
         return self._say("discarded", {}, wrote=True)
 
     def call(self, name: str, args: dict[str, Any]) -> ToolResult:

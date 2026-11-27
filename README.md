@@ -41,6 +41,37 @@ Built for the Scaler × Wispr "India Runs on Voice" hackathon (track: livelihood
    this week. Answers are worked out by code and spoken back.
 8. **For the auditor:** one tap downloads the month's invoices as a spreadsheet (CSV).
 
+## From two notebooks to one database
+
+The base everything else stands on: the shop's paper records become one searchable record, filled in by voice.
+
+| On paper today | In Order Kural | Table |
+|---|---|---|
+| Notebook 1: customers and places | **Customer book**: name, town, state, GSTIN, order count, balance | `customers` |
+| Notebook 2: order details | **Order book**: every order and line, its status, its invoice number, and **the exact words each line came from** | `orders`, `order_lines`, `voice_pieces` |
+| Hand-written GST invoice | Numbered **tax invoice** (FY series), frozen when issued | `bills` |
+| Khatabook app | **Khata**: invoices add to what the buyer owes, payments subtract, undo by reversal | `ledger_entries` |
+| (nothing) | Every change, and every AI call's time and cost | `order_events`, `traces` |
+
+<p align="center"><img src="docs/round2/screens/r2-books.png" alt="The Books tab: customer book and order book, each line with the words it came from" width="360"></p>
+
+```mermaid
+erDiagram
+    customers ||--o{ orders : places
+    orders ||--o{ order_lines : has
+    voice_pieces ||--o{ order_lines : "words behind"
+    orders ||--o| bills : "invoiced as"
+    customers ||--o{ ledger_entries : "khata"
+    bills ||--o| ledger_entries : "debit"
+    voice_pieces ||--o{ order_events : "changed"
+    customers { text name  text city }
+    orders { text state  text transport  text payment  text gstin  text state_code }
+    order_lines { text item_code  json sizes  int quantity  int rate_paise }
+    voice_pieces { text transcript  text state }
+    bills { int number  int total_paise  json invoice  int voided }
+    ledger_entries { text kind  int amount_paise  int reverses }
+```
+
 ## What works today (27 Nov)
 
 | Part | State |
@@ -52,7 +83,7 @@ Built for the Scaler × Wispr "India Runs on Voice" hackathon (track: livelihood
 | **GST tax invoice**, packing list, **khata** with undo, monthly GST CSV | ✅ Unit-tested; invoice checked in a browser |
 | Read-back in Tamil, Hindi, Malayalam, Kannada and English | ✅ Malayalam and Kannada wording still to be checked by native speakers |
 | **Eval:** 13 conversations through the real AI | ✅ **11-12/13 fully correct, 0 wrong lines saved**, p50 about 0.4 s per turn ([report](docs/round2/05-evalset.md)) |
-| Tests | ✅ 358 passing |
+| Tests | ✅ 360 passing |
 
 ## Run it in one command
 

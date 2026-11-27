@@ -155,6 +155,10 @@ class Store:
             rows = self.conn.execute(self._ORDER_SQL + f" WHERE o.state IN ({marks}) ORDER BY o.id", states).fetchall()
             return [self._load_order(r) for r in rows]
 
+    def order_dates(self) -> dict[int, str]:
+        with self.lock:
+            return {r[0]: r[1] for r in self.conn.execute("SELECT id, created_at FROM orders")}
+
     def set_order_state(self, order_id: int, state: str) -> None:
         with self.tx():
             self.conn.execute("UPDATE orders SET state=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (state, order_id))

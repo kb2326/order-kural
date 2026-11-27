@@ -78,3 +78,14 @@ def test_sample_bot_audio_text_matches_say(client):
     saved = json.loads(texts_file.read_text(encoding="utf-8"))
     steps = run_sample(client)
     assert [" ".join(s["spoken"]) for s in steps] == saved["bot"]
+
+
+def test_books_keep_every_word_each_line_came_from(client):
+    """The order book must show the words behind each line: all pieces merged into it, and the forwarded note."""
+    run_sample(client)
+    books = client.get("/api/books").json()
+    kerala = next(o for o in books["orders"] if o["customer"] == "Kerala Fancy")
+    said = kerala["lines"][0]["said"]
+    assert "Print palazzo" in said and "kids palazzo set" in said  # piece 1 and piece 2, merged
+    murugan = next(o for o in books["orders"] if o["customer"] == "Sri Murugan Tex")
+    assert "Forwarded voice note from a buyer" in murugan["lines"][0]["said"]
