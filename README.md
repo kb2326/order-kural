@@ -1,46 +1,58 @@
 # Order Kural
 
-**The shop's ledger that listens.** Listens like ChatGPT, remembers like Tally.
+**The shop's order book that listens.** A voice agent for small garment wholesalers in Tirupur, Tamil Nadu. The owner
+**talks** (Tamil, Hindi, Malayalam, Kannada, mixed with English), or forwards a buyer's voice note. Order Kural builds
+the order from the pieces, reads it back in his language, saves it only when he says **"sari"**, then makes the **GST
+tax invoice**, the packing list and the **khata** entry, and answers questions like *"what's still to ship?"*.
 
-A voice-first order book for small garment wholesalers in Tirupur, Tamil Nadu. Built for the Scaler × Wispr
-"India Runs on Voice" hackathon (track: livelihoods and small business).
+Built for the Scaler × Wispr "India Runs on Voice" hackathon (track: livelihoods and small business).
 
-> **Status (27 Nov):** the order engine and the no-key sample work end to end. **Live voice and live AI are being
-> built now**; the sample uses saved AI answers in place of the AI. See [What works today](#what-works-today).
-
-<p align="center"><img src="docs/round2/screens/s1-sample.png" alt="Three voice pieces from Kerala Fancy become one order of ₹8,328.60" width="360"></p>
+<p align="center"><img src="docs/round2/screens/r2-sample-talk.png" alt="A Tamil order spoken in pieces becomes one order, read back in Tamil" width="330">
+&nbsp;<img src="docs/round2/screens/r2-invoice.png" alt="The GST tax invoice in the shop's own layout" width="430"></p>
 
 ---
 
 ## The problem
 
-- **The order lives everywhere.** One customer's order arrives in pieces: a call, a voice note, another call, in Tamil,
-  Malayalam, Kannada or Hindi.
-- **It gets written three times:** an order notebook, a bill, and a credit (khata) notebook.
-- **Nothing remembers.** The owner stitches the pieces together from memory. Rates, minimums and GST are worked out by hand.
+- **An order arrives in pieces:** calls, forwarded WhatsApp voice notes and shop visits, in four languages, over
+  hours or days. One real interstate order was **20 lines, 6,443 pieces, ₹4.6 lakh**.
+- **It gets written three or four times:** a customer notebook, an order notebook, a hand-written GST invoice, and a
+  credit app. The auditor gets the invoices on paper once a month.
+- **Nothing remembers.** The owner stitches the pieces together from memory and works out rates, GST and balances
+  by hand.
 
 ## What it does
 
-1. **Speak any piece** of an order, or forward the customer's own voice note.
-2. **AI finds the customer and the change:** "add kids palazzo sets", "make crop tops twelve".
-3. **Code does the maths:** list rates, minimum quantities, GST. Money is exact, in paise.
-4. **It reads the change back.** You say **"sari"** (OK) and only then is the order updated.
-5. **Bill, khata, to-ship:** one order flows into a GST bill, a credit entry and the shipping list.
+1. **Talk, forward, or type.** Tap **Talk** and speak hands-free, interrupting at any time. Or upload a buyer's voice
+   note. Or type.
+2. **The agent builds one order from many pieces.** It finds the customer, adds and changes lines, and asks one
+   short question when unsure (*"Which customer is this for?"*).
+3. **Code does the maths and the checks:** list rates, minimum quantities, unknown items, sizes nobody said, and
+   items whose code doesn't match the words.
+4. **It reads back in the owner's language.** Nothing is saved until he says **"sari"** (or taps it).
+5. **"Bill it"** makes a real **GST tax invoice** in the shop's own paper layout:
+   - IGST for another state, CGST + SGST inside Tamil Nadu;
+   - HSN codes, round-off, the amount in words;
+   - B2C invoices for buyers without a GSTIN;
+   - plus a **packing list** for staff.
+6. **The khata:** each invoice is added to what the buyer owes, *"paid 5,000 by UPI"* is subtracted, and mistakes
+   are undone by a reversal entry, never deleted.
+7. **Ask the shop:** *"what's still to ship?"*, a customer's order and balance, or how many of an item were ordered
+   this week. Answers are worked out by code and spoken back.
+8. **For the auditor:** one tap downloads the month's invoices as a spreadsheet (CSV).
 
-## What works today
+## What works today (27 Nov)
 
-| Part | State | Where |
-|---|---|---|
-| Starts with one command and no keys; "key not set" banner | ✅ Working, checked by CI on every push | `docker-compose.yml`, `.github/workflows/ci.yml` |
-| Order engine: merge pieces, list rates, minimums, rate checks, GST in paise | ✅ Working, unit-tested | `app/domain/` |
-| Nothing saved until "sari"; double taps and stale pieces refused | ✅ Working, tested | `app/flow/pieces.py` |
-| Sample conversation (3 pieces → one ₹8,328.60 order) | ✅ Working, **on saved AI answers, no audio** | `app/sample/` |
-| Speech to text (Sarvam Saaras) | 🔨 Building (S2). Tested once by script on a real Hindi voice note | |
-| AI understanding (sarvam-105b, strict JSON) | 🔨 Building (S3). One real call tested; it made mistakes we now guard against | |
-| Spoken read-back in Tamil / Hindi; "sari" by voice | ⏳ Planned (S4) | |
-| Play the voice note behind each line | ⏳ Planned (S3) | |
-| Eval set and accuracy report | ⏳ Planned (S3) | |
-| GST bill, khata, to-ship | ⏳ Planned (S5) | |
+| Part | State |
+|---|---|
+| `docker compose up` with **no keys** shows the main screen, a "key not set" banner and the full **keyless sample** (11 steps, synthetic Bulbul voice) | ✅ Checked from a fresh clone, and by CI on every push |
+| **Live voice agent** (Pipecat + Sarvam realtime STT, sarvam-105b with tools, Bulbul TTS), barge-in, 0.3-1.2 s replies | ✅ Working with a key; checked end to end in Docker |
+| Typed messages and **forwarded voice notes** (cut at pauses, Sarvam STT) | ✅ Working; tested on a real customer's Hindi note |
+| Order engine, guardrails, "sari" confirm, merging pieces | ✅ Unit-tested |
+| **GST tax invoice**, packing list, **khata** with undo, monthly GST CSV | ✅ Unit-tested; invoice checked in a browser |
+| Read-back in Tamil, Hindi, Malayalam, Kannada and English | ✅ Malayalam and Kannada wording still to be checked by native speakers |
+| **Eval:** 13 conversations through the real AI | ✅ **11-12/13 fully correct, 0 wrong lines saved**, p50 about 0.4 s per turn ([report](docs/round2/05-evalset.md)) |
+| Tests | ✅ 358 passing |
 
 ## Run it in one command
 
@@ -52,161 +64,144 @@ docker compose up --build
 
 Open **http://localhost:8000**.
 
-- **Works without any keys.** You will see a "key not set" banner. Press **Try the sample conversation** to watch three
-  saved voice pieces build one order through the real engine.
-- **Live voice:** copy `.env.example` to `.env` and set `SARVAM_API_KEY` (from [sarvam.ai](https://www.sarvam.ai/)).
+- **No key needed to look around:** press **Try the sample** to step through a whole day: a Tamil order in two
+  pieces, "சரி", a forwarded Hindi note (the agent asks for the customer), the GST invoice, a UPI payment and *"what's
+  still to ship?"*. It uses saved AI answers and a synthetic voice, all through the real agent and rules.
+- **Live voice:** copy `.env.example` to `.env`, set `SARVAM_API_KEY` (from [sarvam.ai](https://www.sarvam.ai/)),
+  and run `docker compose up --build` again. Then tap **Talk** (use headphones, or the agent may hear itself).
+- The shop details on the invoice (`data/shop.json`) are **made up** for the demo.
 
-Run the tests without Docker:
+Tests and the eval without Docker:
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt   # Windows: .venv\Scripts\pip
 .venv/bin/python -m pytest -q
+SARVAM_API_KEY=... .venv/bin/python -m eval.run                          # about ₹1.50 per run
 ```
 
-## How an order is built (target design; live voice in progress)
+## How it works: a bounded voice agent
 
-Three pieces, minutes or hours apart, become one order. Today the sample runs this flow from the "AI" step onward with
-saved answers; the speech and AI calls are being wired in.
+**One rule: the AI proposes, the code decides, the owner confirms.**
+- The AI only understands speech and picks a **tool**.
+- Tested code does every lookup, check, sum and save.
+- Every sentence about orders, money or the khata is **built by code from what the tool actually did**, so the voice
+  can never claim something that didn't happen.
+
+```mermaid
+flowchart LR
+    O(["Owner<br/>talks / forwards / types"]) --> E
+
+    subgraph Agent["Order Kural agent (one container)"]
+        E["Ears<br/>Sarvam STT<br/>(realtime or batch)"] --> N["Number words → digits<br/>(code)"]
+        N --> B["Brain<br/>sarvam-105b<br/>picks a tool"]
+        B --> T["Tools<br/>(tested code)"]
+        T --> G{"Guards<br/>(code)"}
+        G --> M["Mouth<br/>code-built sentence<br/>→ Bulbul voice"]
+        G --> DB[("Shop memory<br/>SQLite")]
+    end
+
+    M --> O
+    O -->|"sari"| T
+```
+
+| Layer | Where | What it does |
+|---|---|---|
+| **Live voice pipeline** | `app/voice/` | Pipecat streams mic audio over a WebSocket (`/api/voice`): Sarvam realtime STT → sarvam-105b with tools → Bulbul TTS. It knows when the owner stops talking, and he can interrupt it. |
+| **Text brain** | `app/agent/text_loop.py` | The same agent for typed messages, uploaded voice notes and the eval. It calls Sarvam chat with tools, at most 4 rounds per turn. |
+| **Tools** | `app/agent/session.py`, `tools.py` | 12 tools. **Read:** `find_customer`, `get_open_order`, `ask_shop`. **Write** (these only *stage* a change): `add_to_order`, `change_line`, `remove_line`, `set_detail`, `bill_order`, `record_payment`, `mark_shipped`. **Approve:** `confirm_pending`, `discard_pending`. |
+| **Spoken sentences** | `app/agent/say.py` | Every read-back, in 5 languages, built from tool results. Money is exact. |
+| **Domain** | `app/domain/` | Item list, order engine, rules (minimums, rate checks), the GST invoice (`bill.py`, `gst.py`), the khata. All money is in integer paise. |
+| **Shop services** | `app/flow/` | Piece state machine, invoice, payment, shipping, undo, and the 3 Ask questions. |
+| **Store** | `app/store/db.py` | SQLite: customers, orders, lines, voice pieces, events, invoices, khata entries, and traces (time and cost of every AI call). |
+| **Screen** | `app/static/` | One plain page, no build step: Talk / Upload / Type, the order slip with **Sari** and **Cancel**, invoices, khata. |
+| **Eval** | `eval/` | 13 conversations scored against correct answers ([results](docs/round2/05-evalset.md)). |
+
+### The guards: code that checks the AI's work
+
+Each guard was added because a real test caught the AI doing that.
+
+| The AI might… | The code… | Found by |
+|---|---|---|
+| invent a customer ("Sir") from a greeting | asks *"Which customer is this for?"* | Real Hindi note, 27 Nov |
+| code "women's pant" as Girls pant | refuses item codes whose name doesn't fit the words (incl. women's / teen / ladies) | Real Hindi note |
+| add a size nobody said ("1-10 yrs" on "shorts set 20") | refuses sizes whose numbers weren't said; keeps the other lines | Eval |
+| say "added" without calling a tool | says *"That was not added. Please say it again."* | Live voice spike |
+| confirm on its own | saves only if the owner's last words were a yes word, or he tapped Sari | Design |
+| send the same tool call twice | ignores a repeat within one turn | Sarvam docs |
+| mishear "S aaru" (S six) as "SR", or drop "irupathu naalu" (24) | turns number words and "SR" into digits before the AI sees them | Live voice, eval |
+
+### One order, end to end
 
 ```mermaid
 sequenceDiagram
     actor Owner
-    participant App as Order Kural
-    participant STT as Sarvam speech-to-text
-    participant AI as AI (sarvam-105b)
-    participant Rules as Rules engine (code)
+    participant Agent as Order Kural agent
+    participant Code as Tools + guards (code)
+    participant DB as Shop memory
 
-    Owner->>App: Piece 1: "Kerala Fancy, print palazzo 2 dozen, crop tops S M L six each"
-    App->>STT: audio
-    STT-->>App: transcript (Tamil + English mixed)
-    App->>AI: transcript + open orders + item list
-    AI-->>App: customer = new, changes = add PRP 24, add CRT S6 M6 L6
-    App->>Rules: apply changes
-    Rules-->>App: rates, minimum checks, GST, total
-    App-->>Owner: reads back the change and total
-    Owner->>App: "sari"
-    App->>App: order saved
-
-    Owner->>App: Piece 2: "add kids palazzo sets, make crop tops twelve"
-    Note over App,Rules: same steps: AI finds Kerala Fancy's open order, code recalculates
-    Owner->>App: "sari"
-
-    Owner->>App: Piece 3: "KPN transport, credit"
-    Owner->>App: "sari"
-    Owner->>App: "bill it"
-    App-->>Owner: GST bill, khata entry, added to the to-ship list
+    Owner->>Agent: "Kerala Fancy, Palakkad-ku 24 print palazzo"
+    Agent->>Code: add_to_order(Kerala Fancy, PRP x 24, city Palakkad)
+    Code-->>Owner: "Kerala Fancy: Print palazzo 24. Total ₹1,632. Say sari to save."
+    Owner->>Agent: "appuram crop top S aaru M aaru L aaru"
+    Agent->>Code: add_to_order(... CRT S6 M6 L6)  merged into the same waiting order
+    Owner->>Agent: "சரி"
+    Agent->>Code: confirm_pending (checks the yes word)
+    Code->>DB: save, in one transaction
+    Owner->>Agent: "bill podunga"
+    Code-->>Owner: "GST invoice ₹3,131 including GST. Say sari."
+    Owner->>Agent: "சரி"
+    Code->>DB: invoice KG/26-27/0001 (IGST 5%), khata += ₹3,131
+    Owner->>Agent: "aayiram UPI-la kuduthaanga"
+    Code->>DB: khata −= ₹1,000 (after sari)
 ```
 
-## Architecture
-
-One container. No frontend build step.
-
-```mermaid
-flowchart LR
-    B["Browser<br/>(phone or laptop)"] --> API
-
-    subgraph C["Docker container: FastAPI"]
-        API["api<br/>HTTP routes"] --> FLOW["flow<br/>piece state machine"]
-        FLOW --> DOM["domain<br/>catalogue, order engine,<br/>rules, GST"]
-        FLOW --> PROV["providers<br/>STT, AI, TTS"]
-        FLOW --> STORE["store<br/>SQLite"]
-    end
-
-    PROV --> S1["Sarvam Saaras<br/>speech-to-text"]
-    PROV --> S2["sarvam-105b<br/>understanding"]
-    PROV --> S3["Sarvam Bulbul<br/>voice reply"]
-    STORE --> DB[("orderkural.db")]
-```
-
-### The components, in plain words
-
-| Component | Where | What it does, simply |
-|---|---|---|
-| **Screen** | `app/static/` | A WhatsApp-style page. Each voice piece is a chat bubble; the proposed change appears as a bill-book page with **Sari ✔** and **Vendaam ✖** buttons. Plain HTML and JavaScript, no build step. |
-| **API** | `app/api.py` | The doors the screen knocks on: play the next sample piece, confirm or discard a piece, list orders. Sends money both as exact paise and as "₹8,328.60". |
-| **Piece flow** | `app/flow/pieces.py` | The traffic controller. Takes one voice piece, finds which customer's open order it belongs to, works out the change, and **holds it until the owner says "sari"**. Confirming twice, or confirming a discarded piece, is refused. |
-| **Read-back** | `app/flow/readback.py` | Turns the change into one sentence to say back: "Added: Crop top S 6, M 6, L 6 at ₹75. Order total ₹3,131.10 with GST. Say sari to confirm." |
-| **Item list** | `data/items.json`, `app/domain/catalog.py` | The shop's items with codes, list rates and minimum quantities, from the real notebook. Understands spoken names and near-misses ("print palazo" → Print palazzo). |
-| **AI output format** | `app/domain/changes.py` | The exact shape the AI must answer in: which customer, and a list of changes (`add_line`, `change_line`, `remove_line`, `set_field`). Anything else is rejected, e.g. a negative quantity. |
-| **Order engine** | `app/domain/order.py` | Applies a change list to an order. The same item twice merges into one line; an unknown item is reported, never guessed. |
-| **Rules** | `app/domain/rules.py` | The maths, in code: line totals, GST (5% up to ₹2,500 a piece, else 18%), minimum-quantity and off-list-rate warnings, what's still missing (transport, payment). |
-| **Store** | `app/store/db.py` | A SQLite file. Keeps customers, orders, lines, every voice piece and every applied change. Each line records which piece last changed it; playing that piece's audio comes with live voice (S3). |
-| **Sample conversation** | `app/sample/conversation.json` | Three saved voice pieces with saved AI answers, so anyone can see the full flow **without an API key**. |
-| **Providers** (next) | `app/providers/` | Speech-to-text, AI and voice reply from Sarvam, each behind a small interface so another engine (for example Wispr's API) can plug in later. |
-
-```mermaid
-flowchart TB
-    V["Voice piece<br/>(live or sample)"] --> F["Piece flow"]
-    F -->|"open orders"| S[("Store")]
-    F -->|"change list"| E["Order engine"]
-    E --> R["Rules: rates, minimums, GST"]
-    E --> C["Item list"]
-    F --> RB["Read-back sentence"]
-    RB --> O{"Owner"}
-    O -->|"sari"| SAVE["Order saved,<br/>line linked to its voice piece"]
-    O -->|"vendaam"| DROP["Nothing changes"]
-    SAVE --> S
-```
-
-## Order life cycle
-
-Two state machines. A **voice piece** lives for a minute; an **order** lives for days.
+### Order life cycle
 
 ```mermaid
 stateDiagram-v2
     direction LR
-    state "Voice piece" as P {
-        [*] --> received
-        received --> transcribed
-        transcribed --> proposed
-        proposed --> read_back
-        read_back --> applied: "sari"
-        read_back --> discarded: "vendaam"
-        applied --> [*]
-        discarded --> [*]
-    }
+    [*] --> waiting: tool stages a change
+    waiting --> waiting: more pieces merge in
+    waiting --> open: "sari"
+    waiting --> [*]: "cancel"
+    open --> billed: "bill it" + "sari" (GST invoice, khata debit)
+    billed --> open: Undo (reversal entry)
+    billed --> shipped: "sent by KPN" + "sari"
+    shipped --> [*]
 ```
-
-```mermaid
-stateDiagram-v2
-    direction LR
-    state "Order" as O {
-        [*] --> open
-        open --> open: confirmed piece
-        open --> billed: "bill it"
-        billed --> shipped: "sent"
-        open --> cancelled
-        shipped --> [*]
-        cancelled --> [*]
-    }
-```
-
-Nothing changes an order until the owner confirms the piece.
 
 ## Why AI, and why code
 
-| Job | Who does it | Why |
+| Job | Who | Why |
 |---|---|---|
-| Hear mixed Tamil / English / Hindi speech | AI (Sarvam STT) | Code can't transcribe speech |
-| Work out which customer, which item, what changed | AI (sarvam-105b) | Speech is messy: "make it twelve", "same as last time" |
-| Rates, minimums, GST, totals | **Code** | Must be exact and the same every time |
-| Final say | **The owner** ("sari") | A wrong bill costs money and trust |
+| Hear mixed Tamil / Hindi / Malayalam / Kannada and English | AI (Sarvam STT) | Code can't transcribe speech |
+| Work out which customer, which item, what changed | AI (sarvam-105b, tool calls) | Speech is messy: "make crop tops twelve", "same shop as before" |
+| Rates, minimums, GST, invoices, balances, every spoken number | **Code** | Must be exact and the same every time |
+| Final say | **The owner** ("sari") | A wrong invoice costs money and trust |
+
+## What it depends on
+
+| Service | Used for | If it gets costly or stops |
+|---|---|---|
+| Sarvam Saaras (speech-to-text) | Live and uploaded voice | Swap the provider in `app/providers/`; typing still works |
+| Sarvam sarvam-105b (LLM) | Picking tools | Any tool-calling LLM fits the same tool definitions |
+| Sarvam Bulbul (text-to-speech) | Spoken read-back | The screen shows every reply as text |
+| Pipecat (open source, BSD) | Real-time voice pipeline | Runs in our container; no paid service |
+
+The cost is measured, not guessed: about **₹0.03-0.08 per typed turn** and about **₹1.50 for the whole 13-case
+eval**. Every AI call is traced with its time and estimated cost.
 
 ## Project docs
 
-How we built it, the way a product team would:
-
 | Doc | What it covers |
 |---|---|
-| [Story](docs/round2/00-story.md) | The pain, why now, why voice and AI |
-| [Life cycle](docs/round2/00b-lifecycle.md) | From voice note to bill, and the records kept |
-| [Discovery](docs/round2/01-discovery.md) | The user, the real workflow, real voice notes |
+| [Discovery](docs/round2/01-discovery.md) | The user, the real workflow, real voice notes and bills |
 | [Market scan](docs/round2/02-market-scan.md) | Tally, Vyapar, Khatabook, ChatGPT and the gap |
-| [PRD](docs/round2/03-prd.md) | Requirements, metrics, guardrails |
-| [RFC](docs/round2/04-rfc.md) | Design, data model, eval and build slices |
-| [ADRs](docs/round2/adr/) | One page per key decision |
+| [PRD](docs/round2/03-prd.md), [RFC](docs/round2/04-rfc.md), [ADRs](docs/round2/adr/) | Requirements, first design, key decisions |
+| [Design: the order book that listens](docs/superpowers/specs/2026-11-27-order-book-that-listens-design.md) | The approved agent design, including the GST-invoice change |
+| [Eval](docs/round2/05-evalset.md) | What we measure, every run, and the limits |
 
 ## Built by voice
 
-This project was planned and written by dictating with [Wispr Flow](https://wisprflow.ai/).
-See [built-by-voice.md](docs/round2/built-by-voice.md).
+Planned and written by dictating with [Wispr Flow](https://wisprflow.ai/). See
+[built-by-voice.md](docs/round2/built-by-voice.md).
