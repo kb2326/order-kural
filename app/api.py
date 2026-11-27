@@ -385,7 +385,8 @@ def list_orders(request: Request) -> list[dict]:
     for o in svc.store.open_orders():
         t = compute_totals(o, svc.catalog)
         out.append({"id": o.id, "customer_name": o.customer_name, "city": o.city, "state": o.state,
-                    "line_count": len(o.lines), "total_paise": t.total_paise, "total": format_inr(t.total_paise)})
+                    "line_count": len(o.lines), "total_paise": t.subtotal_paise,  # before GST: added on the invoice
+                    "total": format_inr(t.subtotal_paise)})
     return out
 
 

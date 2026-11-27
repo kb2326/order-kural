@@ -101,3 +101,14 @@ def test_gst_report_skips_voided_and_other_months(billed):
 
 def test_gst_report_bad_month_422(client):
     assert client.get("/api/reports/gst.csv?month=Nov").status_code == 422
+
+
+def test_open_orders_list_shows_value_before_gst(client):
+    live = client.app.state.pieces
+    agent = AgentSession(live, ShopService(live.store, live.catalog))
+    agent.heard("Kerala Fancy palazzo", "en-IN")
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    agent.heard("sari")
+    agent.confirm_pending()
+    [row] = client.get("/api/orders").json()
+    assert row["total_paise"] == 78000 and row["total"] == "₹780.00"  # GST is added only on the invoice
