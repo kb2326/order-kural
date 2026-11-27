@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict
 from datetime import date
 
-from app.domain.bill import Bill, make_bill
+from app.domain.bill import Bill, BillLine, make_bill, share_text
 from app.domain.catalog import Catalog
 from app.domain.khata import balance
 from app.domain.money import format_inr
@@ -25,6 +25,31 @@ class ShopService:
     def _on_billed(self, bill: Bill, customer_id: int) -> None:
         self.store.add_ledger(customer_id=customer_id, kind="bill", amount_paise=bill.total_paise,
                               ref_bill=bill.number)
+
+    def bill_view(self, number: int) -> dict | None:
+        """Everything the bill page and the share button need, from the stored (frozen) bill."""
+        row = self.store.get_bill(number)
+        if row is None:
+            return None
+        order = self.store.get_order(row["order_id"])
+        lines = [BillLine(**l) for l in json.loads(row["lines_json"])]
+        bill = Bill(number=number, order_id=row["order_id"], customer_name=order.customer_name, city=order.city,
+                    transport=order.transport, payment=order.payment, lines=lines, total_paise=row["total_paise"],
+                    created_at=row["created_at"][:10])
+        packing = []  # qty_text is "S 6, M 6" for sized lines (labels may contain spaces) or just "24"
+        for l in lines:
+            if l.qty_text.isdigit():
+                packing.append({"item": l.name, "size": "-", "qty": l.quantity})
+                continue
+            for part in l.qty_text.split(", "):
+                size, _, qty = part.rpartition(" ")
+                packing.append({"item": l.name, "size": size, "qty": int(qty)})
+        return {"number": number, "customer": bill.customer_name, "city": bill.city, "date": bill.created_at,
+                "transport": bill.transport, "payment": bill.payment, "voided": bool(row["voided"]),
+                "order_state": order.state, "total_paise": bill.total_paise, "total": format_inr(bill.total_paise),
+                "lines": [{**asdict(l), "rate": format_inr(l.rate_paise), "amount": format_inr(l.amount_paise)}
+                          for l in lines],
+                "packing": packing, "share_text": share_text(bill)}
 
     def balance(self, customer_id: int) -> int:
         return balance(self.store.ledger_for(customer_id))

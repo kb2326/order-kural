@@ -23,7 +23,8 @@ from app.providers.sarvam_stt import SarvamSTT
 from app.agent.session import AgentSession
 from app.agent.text_loop import TextBrain
 from app.domain.changes import PieceResult
-from app.flow.shop import ShopService
+from app.flow import ask
+from app.flow.shop import ShopError, ShopService
 from app.domain.money import format_inr
 from app.domain.order import Order
 from app.domain.rules import compute_totals
@@ -231,6 +232,59 @@ async def voice(ws: WebSocket, session: str = "", lang: str = "ta-IN") -> None:
 @router.get("/agent/state")
 def agent_state(request: Request) -> dict:
     return {"ui": _agent(request).slip()}
+
+
+def _shop(request: Request) -> ShopService:
+    live = request.app.state.pieces
+    return ShopService(live.store, live.catalog)
+
+
+@router.get("/bills")
+def list_bills(request: Request) -> list[dict]:
+    return [{**b, "total": format_inr(b["total_paise"]), "voided": bool(b["voided"])}
+            for b in request.app.state.pieces.store.recent_bills()]
+
+
+@router.get("/bills/{number}")
+def get_bill(number: int, request: Request) -> dict:
+    view = _shop(request).bill_view(number)
+    if view is None:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    return view
+
+
+@router.get("/customers")
+def list_customers(request: Request) -> list[dict]:
+    shop = _shop(request)
+    out = []
+    for c in shop.store.all_customers():
+        bal = shop.balance(c["id"])
+        out.append({**c, "balance_paise": bal, "balance": format_inr(bal)})
+    return out
+
+
+@router.get("/customers/{customer_id}/khata")
+def customer_khata(customer_id: int, request: Request) -> dict:
+    shop = _shop(request)
+    entries = shop.store.ledger_for(customer_id)
+    bal = shop.balance(customer_id)
+    return {"entries": [{**e, "amount": format_inr(e["amount_paise"])} for e in entries], "balance_paise": bal,
+            "balance": format_inr(bal)}
+
+
+@router.post("/customers/{customer_id}/undo")
+def customer_undo(customer_id: int, request: Request) -> dict:
+    """Tap-only undo of the latest bill or payment, as a reversal entry (never a delete)."""
+    try:
+        return {"message": _shop(request).undo_last(customer_id)}
+    except ShopError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.get("/to-ship")
+def to_ship(request: Request) -> dict:
+    live = request.app.state.pieces
+    return ask.to_ship(live.store, live.catalog).facts
 
 
 @router.post("/sample/reset")

@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import router
+from app.bill_page import pages
 from app.config import provider_status
 from app.domain.catalog import Catalog
 from app.flow.pieces import PieceService
@@ -31,6 +32,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.state.text_limiter = RateLimiter(per_ip_hour=30, per_day=300)
     app.state.voice_limiter = RateLimiter(per_ip_hour=6, per_day=100)
     app.include_router(router)
+    app.include_router(pages)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)

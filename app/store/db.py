@@ -168,6 +168,13 @@ class Store:
             row = self.conn.execute("SELECT * FROM bills WHERE number=?", (number,)).fetchone()
         return dict(row) if row else None
 
+    def recent_bills(self, limit: int = 50) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT b.number, b.total_paise, b.voided, b.created_at, c.name AS customer FROM bills b "
+                "JOIN customers c ON c.id = b.customer_id ORDER BY b.number DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
     def set_bill_voided(self, number: int) -> None:
         with self.tx():
             self.conn.execute("UPDATE bills SET voided=1 WHERE number=?", (number,))
