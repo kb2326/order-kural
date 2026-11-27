@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+node_modules/
+*.ogg
+*.opus
+*.m4a
+*.mp3
+*.wav
+data/private/
