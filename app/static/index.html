@@ -6,39 +6,67 @@
   <title>Order Kural</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23075e54'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' fill='white'%3E%E0%AE%93%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600&family=Noto+Sans+Devanagari:wght@400;600&family=Noto+Sans+Malayalam:wght@400;600&family=Noto+Sans+Kannada:wght@400;600&display=swap">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <header class="top">
     <div class="shop-mark" aria-hidden="true">ஓ</div>
-    <div>
+    <div class="title">
       <h1>Order Kural</h1>
-      <p class="tagline">The shop's ledger that listens</p>
+      <p class="tagline">The shop's order book that listens</p>
     </div>
+    <label class="lang">
+      <span class="visually-hidden">Reply language</span>
+      <select id="lang" aria-label="Reply language">
+        <option value="ta-IN">தமிழ்</option>
+        <option value="hi-IN">हिन्दी</option>
+        <option value="ml-IN">മലയാളം</option>
+        <option value="kn-IN">ಕನ್ನಡ</option>
+        <option value="en-IN">English</option>
+      </select>
+    </label>
   </header>
 
-  <div id="key-banner" class="banner" hidden>Sarvam API key not set: live voice is off. Try the sample conversation to see the full flow with saved AI results.</div>
+  <div id="key-banner" class="banner" hidden>Sarvam API key not set: live voice is off. Try the sample to see the whole flow with saved AI results and a synthetic voice.</div>
+  <div id="mode-banner" class="banner sample" hidden>Sample mode: saved AI results · synthetic voice. Nothing here touches the real shop. <button id="leave-sample" class="link">Leave the sample</button></div>
 
   <main>
     <section id="chat" class="chat" aria-live="polite">
-      <p class="empty" id="chat-empty">Orders come in pieces: a call, a voice note, another call. Play the sample to see three pieces from one customer become one order.</p>
+      <p class="empty" id="chat-empty">Tap <b>Talk</b> and say an order, like "Kerala Fancy-ku 24 plain palazzo, S aaru M aaru L aaru XL aaru". Forward a buyer's voice note with <b>Upload</b>. Nothing is saved until you say <b>sari</b>.</p>
     </section>
 
-    <section id="proposal"></section>
+    <section id="slip" aria-live="polite"></section>
 
-    <section class="orders-panel">
-      <h2>Open orders</h2>
-      <div id="orders"><p class="muted">No open orders yet.</p></div>
-    </section>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-orders" aria-selected="true" data-panel="orders">Open orders</button>
+      <button role="tab" id="tab-bills" aria-selected="false" data-panel="bills">Bills</button>
+      <button role="tab" id="tab-khata" aria-selected="false" data-panel="khata">Khata</button>
+    </nav>
+    <section id="panel-orders" class="panel" role="tabpanel"></section>
+    <section id="panel-bills" class="panel" role="tabpanel" hidden></section>
+    <section id="panel-khata" class="panel" role="tabpanel" hidden></section>
   </main>
 
   <footer class="dock">
-    <button id="mic" class="mic" disabled>Hold to talk (key not set)</button>
-    <button id="sample-start" class="primary">Try the sample conversation</button>
-    <button id="sample-next" class="primary" hidden>Play next piece</button>
+    <div class="dock-row live-only">
+      <button id="talk" class="talk" disabled>🎤 Talk</button>
+      <label class="upload" id="upload-label">
+        <input id="upload" type="file" accept="audio/*" hidden>
+        <span>⤴ Upload note</span>
+      </label>
+    </div>
+    <form id="type-form" class="dock-row live-only">
+      <input id="type-box" type="text" placeholder="Or type the order…" autocomplete="off" aria-label="Type the order">
+      <button class="send" type="submit" aria-label="Send">➤</button>
+    </form>
+    <div class="dock-row">
+      <button id="sample-start" class="primary">Try the sample</button>
+      <button id="sample-next" class="primary" hidden>Next step ▶</button>
+    </div>
   </footer>
 
+  <script src="/static/voice.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
