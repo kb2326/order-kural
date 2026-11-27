@@ -37,6 +37,7 @@ tools, exactly the path typed messages and uploaded voice notes take.
 | run 6 | keep good lines when one has an invented size; echoes of items without a tool count as unbacked claims | 11/13 | 0.83 | 0 | 402 ms | ₹1.47 |
 | **final 1** | Tamil number words turned into digits in code before the AI | **12/13** | **1.00** | **0** | 420 ms | ₹1.47 |
 | **final 2** | same code, run again (the AI is not deterministic) | **11/13** | **0.92** | **0** | 390 ms | ₹1.47 |
+| **after review** | final review fixes (one yes approves one read-back item, robust history, etc.) | **12/13** | **1.00** | **0** | 328 ms | ₹1.47 |
 
 Reports: `eval/reports/2026-11-27-*.md` and `.json`. Each JSON has every turn: what was said, the tools called and
 what was spoken back.
