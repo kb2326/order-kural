@@ -6,15 +6,22 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api import router
 from app.config import provider_status
+from app.domain.catalog import Catalog
+from app.flow.pieces import PieceService
+from app.store.db import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
+ITEMS_FILE = Path(__file__).parent.parent / "data" / "items.json"
 DEFAULT_DB = "data/runtime/orderkural.db"
 
 
 def create_app(db_path: str | None = None) -> FastAPI:
     app = FastAPI(title="Order Kural")
     app.state.db_path = db_path or os.environ.get("ORDER_KURAL_DB", DEFAULT_DB)
+    app.state.pieces = PieceService(Store(app.state.db_path), Catalog.load(ITEMS_FILE))
+    app.include_router(router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)

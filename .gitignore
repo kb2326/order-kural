@@ -8,3 +8,5 @@ node_modules/
 *.mp3
 *.wav
 data/private/
+data/runtime/
+.superpowers/

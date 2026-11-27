@@ -1,0 +1,38 @@
+{
+  "_note": "A made-up customer. Three voice pieces as the AI would understand them (saved AI results), so the full flow runs without any API key.",
+  "pieces": [
+    {
+      "transcript": "கேரளா ஃபேன்சி, பாலக்காடு. Print palazzo ரெண்டு dozen. Crop top S M L ஒவ்வொன்னும் six.",
+      "ai_result": {
+        "intent": "order_changes",
+        "customer": {"name_as_spoken": "Kerala Fancy", "city": "Palakkad", "match": "new", "confidence": "high"},
+        "changes": [
+          {"op": "add_line", "item_code": "PRP", "name_as_spoken": "print palazzo", "quantity_total": 24},
+          {"op": "add_line", "item_code": "CRT", "name_as_spoken": "crop top", "sizes": {"S": 6, "M": 6, "L": 6}}
+        ]
+      }
+    },
+    {
+      "transcript": "Kerala Fancy-க்கு kids palazzo set S M L ஒவ்வொன்னும் பத்து add பண்ணுங்க. Crop top twelve ஆக்குங்க.",
+      "ai_result": {
+        "intent": "order_changes",
+        "customer": {"name_as_spoken": "Kerala Fancy", "match": "existing", "confidence": "high"},
+        "changes": [
+          {"op": "add_line", "item_code": "KPS", "name_as_spoken": "kids palazzo set", "sizes": {"S": 10, "M": 10, "L": 10}},
+          {"op": "change_line", "item_code": "CRT", "sizes": {"S": 12, "M": 12, "L": 12}}
+        ]
+      }
+    },
+    {
+      "transcript": "Kerala Fancy, KPN transport, credit.",
+      "ai_result": {
+        "intent": "order_changes",
+        "customer": {"name_as_spoken": "Kerala Fancy", "match": "existing", "confidence": "high"},
+        "changes": [
+          {"op": "set_field", "field": "transport", "value": "KPN"},
+          {"op": "set_field", "field": "payment", "value": "credit"}
+        ]
+      }
+    }
+  ]
+}
