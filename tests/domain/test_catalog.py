@@ -41,6 +41,7 @@ def test_plausible_rejects_other_audience_words(cat):
     gpt = cat.get("GPT")
     assert cat.plausible(gpt, "girls pant")
     assert not cat.plausible(gpt, "teen girls pant")
+    assert not cat.plausible(gpt, "teenager girls ke pant")
     assert not cat.plausible(gpt, "women's pant")
     assert not cat.plausible(gpt, "ladies pant")
     assert cat.plausible(cat.get("KPT"), "kids pant")

@@ -9,10 +9,17 @@ from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket
+import uuid
+
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
 from pydantic import BaseModel
 
 from app.agent import say
+from app.audio import AudioError, to_wav16k
+from app.obs.trace import span
+from app.providers.base import ProviderError, Transcript
+from app.providers.costs import stt_paise
+from app.providers.sarvam_stt import SarvamSTT
 from app.agent.session import AgentSession
 from app.agent.text_loop import TextBrain
 from app.domain.changes import PieceResult
@@ -77,6 +84,7 @@ def proposal_json(p: Proposal, svc: PieceService) -> dict:
 
 
 MAX_AGENT_SESSIONS = 200
+NOTE_PREFIX = "Forwarded voice note from a buyer: "
 NO_KEY = "Sarvam API key not set"
 
 
@@ -130,6 +138,55 @@ def agent_text(body: TextIn, request: Request) -> dict:
     _limit(request)
     agent = _agent(request)
     return asdict(_brain(request, agent).turn(body.text.strip()[:2000]))
+
+
+AUDIO_DIR = Path("data/runtime/audio")
+
+
+def _stt(request: Request):
+    return request.app.state.stt or SarvamSTT(_key())
+
+
+def _transcribe(request: Request, audio: UploadFile) -> Transcript:
+    """Save the upload, convert it, and transcribe it (cut at pauses). 422 for unusable audio."""
+    suffix = Path(audio.filename or "note.ogg").suffix.lower()[:8] or ".ogg"
+    stem = uuid.uuid4().hex
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    src, wav = AUDIO_DIR / f"{stem}{suffix}", AUDIO_DIR / f"{stem}-16k.wav"  # never the same file as the upload
+    src.write_bytes(audio.file.read(25 * 1024 * 1024))
+    try:
+        to_wav16k(src, wav)
+        store = request.app.state.pieces.store
+        with span(store, None, "stt", "sarvam") as s:
+            transcript = _stt(request).transcribe(wav)
+            s["cost_paise"] = stt_paise(transcript.seconds_audio)
+        return transcript
+    except AudioError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except ProviderError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.post("/agent/transcribe")
+def agent_transcribe(request: Request, audio: UploadFile = File(...)) -> dict:
+    """Only the words of an uploaded note: the page then sends them over the open voice socket."""
+    if not _key():
+        raise HTTPException(status_code=503, detail=NO_KEY)
+    _limit(request)
+    t = _transcribe(request, audio)
+    return {"transcript": t.text, "language": t.language}
+
+
+@router.post("/agent/upload")
+def agent_upload(request: Request, audio: UploadFile = File(...)) -> dict:
+    """A buyer's forwarded voice note: transcribe it, then give it to the agent like a typed message."""
+    if not _key():
+        raise HTTPException(status_code=503, detail=NO_KEY)
+    _limit(request)
+    t = _transcribe(request, audio)
+    agent = _agent(request)
+    result = asdict(_brain(request, agent).turn(NOTE_PREFIX + t.text))
+    return {**result, "transcript": t.text, "language": t.language}
 
 
 def _tap(request: Request, words: str, action: str) -> dict:

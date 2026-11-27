@@ -27,6 +27,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.state.agent_sessions = OrderedDict()
     app.state.text_brains = {}
     app.state.llm_client = None  # tests inject a mock httpx client here
+    app.state.stt = None  # tests inject a fake speech-to-text here; None means Sarvam
     app.state.text_limiter = RateLimiter(per_ip_hour=30, per_day=300)
     app.state.voice_limiter = RateLimiter(per_ip_hour=6, per_day=100)
     app.include_router(router)

@@ -32,7 +32,7 @@ def _stems(text: str) -> set[str]:
 
 
 # Words that name who an item is for. If what was said has one the item's own name lacks, it is a different item.
-AUDIENCE = {"women", "woman", "ladie", "lady", "teen", "teenage", "boy", "men", "man", "girl", "kid", "baby",
+AUDIENCE = {"women", "woman", "ladie", "lady", "teen", "teenage", "teenager", "boy", "men", "man", "girl", "kid", "baby",
             "gent"}
 
 
