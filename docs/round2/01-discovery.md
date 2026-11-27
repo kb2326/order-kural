@@ -152,6 +152,19 @@ quantity and the transport name came out right. Codemix output keeps English tra
 - **Rates for women's and teen items are not in our list yet.** Ask the owner; don't guess.
 - This note is a good **eval case** (Hindi, 6 lines, transport and payment in one piece).
 
+## 6e. More facts from the owner (2026-11-27) [F]
+
+1. **Languages:** buyers speak Tamil, Hindi, **Malayalam and Kannada**, not only Tamil and Hindi.
+2. **Channels:** orders come by phone call, WhatsApp voice note, **walk-in visits to the Khaderpet shop**, and
+   **referrals** (a new buyer sent by an existing one). A walk-in order is spoken face to face, so there is no
+   recording unless the owner speaks a summary himself.
+3. **Records today:** two notebooks (Book 1: customer/company details; Book 2: order details) and the
+   **Khatabook app** for credit and amounts to be paid. **Nothing for stock.**
+
+**What this changes:** the owner already uses an app for credit, so we should not rebuild Khatabook. The gap is
+*before* the credit entry: capturing the order and turning it into something useful (bill, packing list, what is
+pending). Every order must cost him fewer actions than writing in two books, or he will not switch.
+
 ## 7. What "success" means for this round
 
 - **For the user:** one spoken order becomes a confirmed, complete order record, a bill and (if credit) a khata entry.
