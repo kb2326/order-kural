@@ -23,3 +23,17 @@ def test_tamil_number_words_become_digits(said, want):
                                   "girls pant 1 se 10 saal 50 piece"])
 def test_other_text_is_unchanged(text):
     assert digits(text) == text
+
+
+@pytest.mark.parametrize("said, want", [
+    ("24 Plain Palaso venum, SR, M6, L6, XL6.", "24 Plain Palaso venum, S 6, M6, L6, XL6."),
+    ("SR, MR, LR, XLR", "S 6, M 6, L 6, XL 6"),
+    ("S R, M R, L R, XL R", "S 6, M 6, L 6, XL 6"),
+])
+def test_size_letter_with_r_is_aaru(said, want):
+    """Live STT writes 'S aaru' (S six) as 'SR' or 'S R' (seen in four live runs on 27 Nov)."""
+    assert digits(said) == want
+
+
+def test_words_ending_in_r_are_untouched():
+    assert digits("KPR Transport, Sir, MR Traders") == "KPR Transport, Sir, MR Traders"

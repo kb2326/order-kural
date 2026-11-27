@@ -33,8 +33,15 @@ def _value(word: str) -> int | None:
     return None
 
 
+# Live STT writes "S aaru" (S six) as "SR" or "S R". Only inside a size list (followed by , . ; or the end), so a
+# name like "MR Traders" is left alone.
+_SIZE_AARU = re.compile(r"\b(XXL|XL|S|M|L)\s?R(?=\s*(?:[,.;]|$))")
+
+
 def digits(text: str) -> str:
-    """'irupathu naalu print palazzo' -> '24 print palazzo'; 'randu dozen' -> '24'. Other words are untouched."""
+    """'irupathu naalu print palazzo' -> '24 print palazzo'; 'randu dozen' -> '24'; 'SR, MR' -> 'S 6, M 6'.
+    Other words are untouched."""
+    text = _SIZE_AARU.sub(lambda m: f"{m.group(1)} 6", text)
     tokens = re.split(r"(\s+)", text)
     out: list[str] = []
     i = 0
