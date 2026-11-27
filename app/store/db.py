@@ -172,6 +172,39 @@ class Store:
         with self.tx():
             self.conn.execute("UPDATE bills SET voided=1 WHERE number=?", (number,))
 
+    # ---- queries for 'ask the shop' ----------------------------------------------------------------------
+    def bill_for_order(self, order_id: int) -> dict | None:
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM bills WHERE order_id=? AND voided=0 ORDER BY id DESC LIMIT 1",
+                                    (order_id,)).fetchone()
+        return dict(row) if row else None
+
+    def open_order_for_customer(self, customer_id: int) -> Order | None:
+        with self.lock:
+            row = self.conn.execute(self._ORDER_SQL + " WHERE o.state='open' AND o.customer_id=? ORDER BY o.id DESC "
+                                    "LIMIT 1", (customer_id,)).fetchone()
+            return self._load_order(row) if row else None
+
+    def customer_name(self, customer_id: int) -> str:
+        with self.lock:
+            return self.conn.execute("SELECT name FROM customers WHERE id=?", (customer_id,)).fetchone()[0]
+
+    def find_customers(self, name: str) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT id, name, city FROM customers ORDER BY id").fetchall()
+        return [dict(r) for r in rows if r["name"].casefold() == name.strip().casefold()]
+
+    def all_customers(self) -> list[dict]:
+        with self.lock:
+            return [dict(r) for r in self.conn.execute("SELECT id, name, city FROM customers ORDER BY name")]
+
+    def item_quantity_since(self, item_code: str, since: str) -> int:
+        with self.lock:
+            return self.conn.execute(
+                "SELECT COALESCE(SUM(l.quantity), 0) FROM order_lines l JOIN orders o ON o.id = l.order_id "
+                "WHERE l.item_code=? AND o.state != 'cancelled' AND o.created_at >= ?",
+                (item_code, since)).fetchone()[0]
+
     # ---- khata -------------------------------------------------------------------------------------------
     def add_ledger(self, *, customer_id: int, kind: str, amount_paise: int, ref_bill: int | None = None,
                    mode: str | None = None, reverses: int | None = None) -> int:
