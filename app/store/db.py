@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS order_events (
     id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL, piece_id INTEGER NOT NULL, change_json TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS traces (
-    id INTEGER PRIMARY KEY, piece_id INTEGER, span TEXT NOT NULL, ms INTEGER, cost_paise INTEGER,
-    meta_json TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    id INTEGER PRIMARY KEY, piece_id INTEGER, span TEXT NOT NULL, provider TEXT, ms INTEGER, cost_paise INTEGER,
+    ok INTEGER NOT NULL DEFAULT 1, error TEXT, meta_json TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 """
 
 
@@ -42,10 +42,17 @@ class Store:
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self._upgrade_old_traces()
         self.conn.executescript(SCHEMA)
         # One connection is shared by FastAPI's worker threads, so every access goes through this lock.
         self.lock = threading.RLock()
         self._depth = 0
+
+    def _upgrade_old_traces(self) -> None:
+        """S0-S1 databases have a traces table without provider/ok/error. Nothing ever wrote to it, so recreate it."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(traces)")}
+        if cols and "provider" not in cols:
+            self.conn.execute("DROP TABLE traces")
 
     @contextmanager
     def tx(self) -> Iterator[None]:
@@ -158,6 +165,32 @@ class Store:
         with self.tx():
             self.conn.execute("INSERT INTO order_events(order_id, piece_id, change_json) VALUES (?, ?, ?)",
                               (order_id, piece_id, change_json))
+
+    # ---- traces -------------------------------------------------------------------------------------------
+
+    def add_trace(self, *, piece_id: int | None, span: str, provider: str, ms: int, cost_paise: int, ok: bool,
+                  error: str | None, meta: dict) -> None:
+        with self.tx():
+            self.conn.execute(
+                "INSERT INTO traces(piece_id, span, provider, ms, cost_paise, ok, error, meta_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (piece_id, span, provider, ms, cost_paise, int(ok), error, json.dumps(meta, ensure_ascii=False)))
+
+    @staticmethod
+    def _trace_row(r: sqlite3.Row) -> dict:
+        row = dict(r)
+        row["meta"] = json.loads(row.pop("meta_json") or "{}")
+        return row
+
+    def traces_for(self, piece_id: int) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT * FROM traces WHERE piece_id=? ORDER BY id", (piece_id,)).fetchall()
+        return [self._trace_row(r) for r in rows]
+
+    def recent_traces(self, limit: int = 50) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT * FROM traces ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self._trace_row(r) for r in rows]
 
     def reset(self) -> None:
         with self.tx():
