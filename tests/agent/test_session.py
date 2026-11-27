@@ -247,3 +247,20 @@ def test_invented_sizes_drop_only_those_lines(agent):
         {"name_as_spoken": "shorts set", "item_code": "SHS", "sizes": {"1-10 yrs": 20}}])
     assert agent.pending is not None and [l["item"] for l in agent.pending.view["lines"]] == ["Crop top"]
     assert "Size not said: 1-10 yrs" in r.say
+
+
+def test_duplicate_tool_call_in_one_turn_is_ignored(agent):
+    """27 Nov Docker voice check: sarvam-105b sent the same add_to_order twice in one reply; quantities doubled."""
+    args = {"customer": "Kerala Fancy", "items": PALAZZO}
+    first = agent.call("add_to_order", args)
+    second = agent.call("add_to_order", args)
+    assert second.say == first.say and "₹1,560" in second.say
+    assert agent.pending.view["total_paise"] == 156000
+
+
+def test_same_call_in_a_new_turn_is_applied(agent):
+    args = {"customer": "Kerala Fancy", "items": PALAZZO}
+    agent.call("add_to_order", args)
+    agent.heard("innum athe maadhiri onnu", "ta-IN")
+    agent.call("add_to_order", args)
+    assert agent.pending.view["total_paise"] == 312000

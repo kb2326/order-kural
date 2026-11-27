@@ -84,12 +84,15 @@ class AgentSession:
         self.language = say.DEFAULT
         self.last_user_text = ""
         self.recent_heard: list[str] = []  # the last few things the owner said, for grounding checks
+        self.turn = 0
+        self._last_call: tuple | None = None  # (turn, name, args) of the last tool call, and its result
 
     # ---- plumbing ------------------------------------------------------------------------------------------
     def heard(self, text: str, language: str | None = None) -> None:
         """Called by every brain before each LLM turn, with what the owner just said."""
         self.last_user_text = text
         self.recent_heard = (self.recent_heard + [text])[-RECENT_TURNS:]
+        self.turn += 1  # a new thing said: the same tool call is allowed again
         if language:
             self.language = say.lang(language)
 
@@ -330,7 +333,14 @@ class AgentSession:
         """Run a tool by name with LLM-supplied arguments; unknown names or bad arguments never crash a turn."""
         if name not in TOOL_NAMES:
             return self._quiet({"error": f"Unknown tool {name}"})
+        # sarvam-105b can send the same tool call twice in one reply (27 Nov Docker voice check: every quantity
+        # doubled). An identical call within the same turn of speech returns the first result instead of re-applying.
+        key = (self.turn, name, json.dumps(args, sort_keys=True, default=str))
+        if self._last_call and self._last_call[0] == key:
+            return self._last_call[1]
         try:
-            return getattr(self, name)(**args)
+            result = getattr(self, name)(**args)
         except TypeError as e:
             return self._quiet({"error": f"Bad arguments for {name}: {e}"})
+        self._last_call = (key, result)
+        return result
