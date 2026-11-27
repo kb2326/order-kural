@@ -40,6 +40,64 @@ def test_issue_bill_empty_order_raises(store, shop):
     assert store.get_order(oid).state == "open"
 
 
+def cid(store, order_id):
+    return store.customer_id_of_order(order_id)
+
+
+def test_bill_adds_khata_debit(store, shop):
+    oid = saved_order(store)
+    bill = shop.issue_bill(oid)
+    assert shop.balance(cid(store, oid)) == bill.total_paise
+
+
+def test_balance_bill_minus_payment(store, shop):
+    oid = saved_order(store)
+    shop.issue_bill(oid)
+    assert shop.record_payment(cid(store, oid), 50000, "upi") == 12 * 6500 - 50000
+
+
+def test_overpayment_gives_negative_balance(store, shop):
+    oid = saved_order(store)
+    shop.issue_bill(oid)
+    assert shop.record_payment(cid(store, oid), 100000, "cash") == 12 * 6500 - 100000 < 0
+
+
+def test_undo_payment_restores_balance(store, shop):
+    oid = saved_order(store)
+    shop.issue_bill(oid)
+    shop.record_payment(cid(store, oid), 50000, "upi")
+    assert shop.undo_last(cid(store, oid)) == "Payment of ₹500.00 undone"
+    assert shop.balance(cid(store, oid)) == 12 * 6500
+
+
+def test_undo_bill_voids_and_reopens_order(store, shop):
+    oid = saved_order(store)
+    shop.issue_bill(oid)
+    assert shop.undo_last(cid(store, oid)) == "Bill 1 undone"
+    assert store.get_bill(1)["voided"] == 1
+    assert store.get_order(oid).state == "open"
+    assert shop.balance(cid(store, oid)) == 0
+
+
+def test_undo_twice_reverses_previous_entry_not_the_reversal(store, shop):
+    oid = saved_order(store)
+    shop.issue_bill(oid)
+    shop.record_payment(cid(store, oid), 50000, "upi")
+    shop.undo_last(cid(store, oid))
+    assert shop.undo_last(cid(store, oid)) == "Bill 1 undone"
+    assert shop.balance(cid(store, oid)) == 0
+    with pytest.raises(ShopError, match="Nothing to undo"):
+        shop.undo_last(cid(store, oid))
+
+
+def test_mark_shipped_sets_state_and_transport(store, shop):
+    oid = saved_order(store)
+    shop.issue_bill(oid)
+    shop.mark_shipped(oid, "KPN")
+    order = store.get_order(oid)
+    assert order.state == "shipped" and order.transport == "KPN"
+
+
 def test_issue_bill_twice_raises(store, shop):
     oid = saved_order(store)
     shop.issue_bill(oid)

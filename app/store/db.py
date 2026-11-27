@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS bills (
     id INTEGER PRIMARY KEY, number INTEGER NOT NULL UNIQUE, order_id INTEGER NOT NULL REFERENCES orders(id),
     customer_id INTEGER NOT NULL REFERENCES customers(id), total_paise INTEGER NOT NULL, lines_json TEXT NOT NULL,
     voided INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS ledger_entries (
+    id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL REFERENCES customers(id),
+    kind TEXT NOT NULL CHECK (kind IN ('bill', 'payment', 'reversal')), amount_paise INTEGER NOT NULL,
+    ref_bill INTEGER, mode TEXT, reverses INTEGER REFERENCES ledger_entries(id),
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS traces (
     id INTEGER PRIMARY KEY, piece_id INTEGER, span TEXT NOT NULL, provider TEXT, ms INTEGER, cost_paise INTEGER,
     ok INTEGER NOT NULL DEFAULT 1, error TEXT, meta_json TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -167,6 +172,25 @@ class Store:
         with self.tx():
             self.conn.execute("UPDATE bills SET voided=1 WHERE number=?", (number,))
 
+    # ---- khata -------------------------------------------------------------------------------------------
+    def add_ledger(self, *, customer_id: int, kind: str, amount_paise: int, ref_bill: int | None = None,
+                   mode: str | None = None, reverses: int | None = None) -> int:
+        with self.tx():
+            return self.conn.execute(
+                "INSERT INTO ledger_entries(customer_id, kind, amount_paise, ref_bill, mode, reverses) "
+                "VALUES (?, ?, ?, ?, ?, ?)", (customer_id, kind, amount_paise, ref_bill, mode, reverses)).lastrowid
+
+    def ledger_for(self, customer_id: int) -> list[dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT * FROM ledger_entries WHERE customer_id=? ORDER BY id",
+                                     (customer_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def set_order_transport(self, order_id: int, transport: str) -> None:
+        with self.tx():
+            self.conn.execute("UPDATE orders SET transport=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                              (transport, order_id))
+
     # ---- voice pieces -------------------------------------------------------------------------------------
     def add_piece(self, transcript: str, source: Literal["live", "sample"], audio_path: str | None) -> int:
         with self.tx():
@@ -232,5 +256,5 @@ class Store:
 
     def reset(self) -> None:
         with self.tx():
-            for table in ("order_events", "order_lines", "bills", "orders", "customers", "voice_pieces", "traces"):
+            for table in ("order_events", "order_lines", "ledger_entries", "bills", "orders", "customers", "voice_pieces", "traces"):
                 self.conn.execute(f"DELETE FROM {table}")

@@ -7,6 +7,9 @@ from datetime import date
 
 from app.domain.bill import Bill, make_bill
 from app.domain.catalog import Catalog
+from app.domain.khata import balance
+from app.domain.money import format_inr
+from app.domain.rules import Payment
 from app.store.db import Store
 
 
@@ -20,7 +23,46 @@ class ShopService:
         self.catalog = catalog
 
     def _on_billed(self, bill: Bill, customer_id: int) -> None:
-        """Seam for the khata debit (Task 6)."""
+        self.store.add_ledger(customer_id=customer_id, kind="bill", amount_paise=bill.total_paise,
+                              ref_bill=bill.number)
+
+    def balance(self, customer_id: int) -> int:
+        return balance(self.store.ledger_for(customer_id))
+
+    def record_payment(self, customer_id: int, amount_paise: int, mode: Payment) -> int:
+        """Returns the new balance (negative = advance paid)."""
+        if amount_paise <= 0:
+            raise ShopError("Payment amount must be more than zero")
+        with self.store.tx():
+            self.store.add_ledger(customer_id=customer_id, kind="payment", amount_paise=amount_paise, mode=mode)
+            return self.balance(customer_id)
+
+    def mark_shipped(self, order_id: int, transport: str | None) -> None:
+        with self.store.tx():
+            order = self.store.get_order(order_id)
+            if order is None or order.state not in ("open", "billed"):
+                raise ShopError("No order waiting to ship")
+            if transport:
+                self.store.set_order_transport(order_id, transport)
+            self.store.set_order_state(order_id, "shipped")
+
+    def undo_last(self, customer_id: int) -> str:
+        """Reverse the latest bill or payment that is not already reversed (tap only, never by voice)."""
+        with self.store.tx():
+            entries = self.store.ledger_for(customer_id)
+            reversed_ids = {e["reverses"] for e in entries if e["kind"] == "reversal"}
+            target = next((e for e in reversed(entries)
+                           if e["kind"] != "reversal" and e["id"] not in reversed_ids), None)
+            if target is None:
+                raise ShopError("Nothing to undo")
+            self.store.add_ledger(customer_id=customer_id, kind="reversal", amount_paise=target["amount_paise"],
+                                  reverses=target["id"])
+            if target["kind"] == "bill":
+                bill = self.store.get_bill(target["ref_bill"])
+                self.store.set_bill_voided(bill["number"])
+                self.store.set_order_state(bill["order_id"], "open")
+                return f"Bill {bill['number']} undone"
+            return f"Payment of {format_inr(target['amount_paise'])} undone"
 
     def issue_bill(self, order_id: int) -> Bill:
         with self.store.tx():
