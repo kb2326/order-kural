@@ -25,9 +25,11 @@ h2{font-size:1.05rem;margin:28px 0 4px;page-break-before:always}
 
 
 @pages.get("/bill/{number}", response_class=HTMLResponse, include_in_schema=False)
-def bill_page(number: int, request: Request) -> str:
-    live = request.app.state.pieces
-    b = ShopService(live.store, live.catalog).bill_view(number)
+def bill_page(number: int, request: Request, sample: str = "") -> str:
+    """?sample=<tab session> shows a bill from that tab's sample shop (a link can't carry the sample header)."""
+    svc = request.app.state.sample_sessions.get(sample.strip()[:64]) if sample else None
+    svc = svc or request.app.state.pieces
+    b = ShopService(svc.store, svc.catalog).bill_view(number)
     if b is None:
         raise HTTPException(status_code=404, detail="Bill not found")
     e = lambda v: escape(str(v if v is not None else ""))  # noqa: E731

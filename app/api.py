@@ -5,6 +5,7 @@ import asyncio
 import importlib
 import json
 import os
+import re
 from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.agent import say
@@ -31,7 +33,7 @@ from app.domain.rules import compute_totals
 from app.flow.pieces import PieceService, PieceStateError, Proposal
 from app.store.db import Store
 
-SAMPLE_LABEL = "Sample: saved AI results"
+SAMPLE_LABEL = "Sample: saved AI results · synthetic voice"
 SAMPLE_FILE = Path(__file__).parent / "sample" / "conversation.json"
 
 router = APIRouter(prefix="/api")
@@ -235,14 +237,15 @@ def agent_state(request: Request) -> dict:
 
 
 def _shop(request: Request) -> ShopService:
-    live = request.app.state.pieces
-    return ShopService(live.store, live.catalog)
+    """The live shop, or this tab's sample shop when the page sends X-Sample-Session."""
+    svc = _svc(request)
+    return ShopService(svc.store, svc.catalog)
 
 
 @router.get("/bills")
 def list_bills(request: Request) -> list[dict]:
     return [{**b, "total": format_inr(b["total_paise"]), "voided": bool(b["voided"])}
-            for b in request.app.state.pieces.store.recent_bills()]
+            for b in _svc(request).store.recent_bills()]
 
 
 @router.get("/bills/{number}")
@@ -283,45 +286,68 @@ def customer_undo(customer_id: int, request: Request) -> dict:
 
 @router.get("/to-ship")
 def to_ship(request: Request) -> dict:
-    live = request.app.state.pieces
-    return ask.to_ship(live.store, live.catalog).facts
+    svc = _svc(request)
+    return ask.to_ship(svc.store, svc.catalog).facts
+
+
+def _sample_agent(request: Request, fresh: bool = False) -> AgentSession:
+    """This tab's sample conversation: the real AgentSession over the tab's own in-memory shop."""
+    svc = _svc(request)
+    agents: dict = request.app.state.sample_agents
+    agent = agents.get(id(svc))
+    if fresh or agent is None or agent.pieces is not svc:
+        agent = AgentSession(svc, ShopService(svc.store, svc.catalog), source="sample")
+        agent.sample_index = 0
+        agents[id(svc)] = agent
+    return agent
 
 
 @router.post("/sample/reset")
 def sample_reset(request: Request) -> dict:
     _svc(request).store.reset()
+    _sample_agent(request, fresh=True)
     return {"ok": True}
 
 
 @router.post("/sample/next")
 def sample_next(request: Request) -> dict:
-    svc = _svc(request)
-    pieces = json.loads(SAMPLE_FILE.read_text(encoding="utf-8"))["pieces"]
-    done = svc.store.count_pieces("sample")
-    if done >= len(pieces):
+    """Replay the next saved step: the owner's words, then the tool calls the AI made for them, through the real
+    agent. Code builds every spoken sentence, exactly as in live use."""
+    agent = _sample_agent(request)
+    steps = json.loads(SAMPLE_FILE.read_text(encoding="utf-8"))["steps"]
+    i = agent.sample_index
+    if i >= len(steps):
         raise HTTPException(status_code=409, detail="Sample finished")
-    piece = pieces[done]
-    proposal = svc.propose(piece["transcript"], PieceResult.model_validate(piece["ai_result"]), source="sample")
-    return {"label": SAMPLE_LABEL, "index": done + 1, "total": len(pieces), "transcript": piece["transcript"],
-            "proposal": proposal_json(proposal, svc)}
+    step = steps[i]
+    agent.sample_index = i + 1
+    agent.heard(step["user_text"], step["language"])
+    spoken, bill_number = [], None
+    for call in step["tool_calls"]:
+        result = agent.call(call["name"], call["args"])
+        if result.say:
+            spoken.append(result.say)
+        bill_number = result.facts.get("number", bill_number) if call["name"] == "confirm_pending" else bill_number
+    if not step["tool_calls"]:
+        spoken.append(step["assistant_text"])
+    n = i + 1
+    return {"label": SAMPLE_LABEL, "index": n, "total": len(steps), "user_text": step["user_text"],
+            "language": step["language"], "spoken": spoken, "slip": agent.slip(), "bill_number": bill_number,
+            "user_audio_url": _sample_audio_url(f"step{n}-user.wav"),
+            "bot_audio_url": _sample_audio_url(f"step{n}-bot.wav")}
 
 
-@router.post("/pieces/{piece_id}/confirm")
-def confirm_piece(piece_id: int, request: Request) -> dict:
-    svc = _svc(request)
-    try:
-        return order_json(svc.confirm(piece_id), svc)
-    except PieceStateError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+SAMPLE_AUDIO = Path(__file__).parent / "sample" / "audio"
 
 
-@router.post("/pieces/{piece_id}/discard")
-def discard_piece(piece_id: int, request: Request) -> dict:
-    try:
-        _svc(request).discard(piece_id)
-    except PieceStateError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return {"ok": True}
+def _sample_audio_url(name: str) -> str | None:
+    return f"/api/sample/audio/{name}" if (SAMPLE_AUDIO / name).exists() else None
+
+
+@router.get("/sample/audio/{name}")
+def sample_audio(name: str) -> FileResponse:
+    if not re.fullmatch(r"step\d{1,2}-(user|bot)\.wav", name) or not (SAMPLE_AUDIO / name).exists():
+        raise HTTPException(status_code=404, detail="No such sample audio")
+    return FileResponse(SAMPLE_AUDIO / name, media_type="audio/wav")
 
 
 @router.get("/orders")
