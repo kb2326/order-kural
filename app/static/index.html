@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Order Kural</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Order Kural</h1>
+    <p class="tagline">The shop's ledger that listens</p>
+  </header>
+  <div id="key-banner" class="banner" hidden>Sarvam API key not set: live voice is off. Try the sample conversation to see the full flow with saved AI results.</div>
+  <main>
+    <section class="controls">
+      <button id="mic" class="mic" disabled>Hold to talk (key not set)</button>
+      <button id="sample-start" class="sample">Try the sample conversation</button>
+    </section>
+    <section id="proposal"></section>
+    <section id="orders"></section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
