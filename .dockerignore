@@ -1,0 +1,10 @@
+.env
+.git
+.venv
+.superpowers
+data/private
+data/runtime
+docs
+tests
+__pycache__
+*.pyc
