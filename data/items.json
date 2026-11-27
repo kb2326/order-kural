@@ -1,0 +1,165 @@
+{
+  "_note": "Rates from the shop's real notebook (Nov 2026), except where rate_note says estimate.",
+  "items": [
+    {
+      "code": "BTS",
+      "name": "Boys T-shirt",
+      "aliases": [
+        "boys tshirt"
+      ],
+      "category": "kids",
+      "rate_rupees": 55,
+      "hsn": "6109",
+      "min_kind": "per_size",
+      "min_qty": 10
+    },
+    {
+      "code": "GTS",
+      "name": "Girls T-shirt",
+      "aliases": [
+        "girls tshirt"
+      ],
+      "category": "kids",
+      "rate_rupees": 55,
+      "hsn": "6109",
+      "min_kind": "per_size",
+      "min_qty": 10
+    },
+    {
+      "code": "TSH",
+      "name": "T-shirt S-M-L",
+      "aliases": [
+        "tshirt",
+        "t shirt"
+      ],
+      "category": "tshirt",
+      "rate_rupees": 60,
+      "hsn": "6109",
+      "min_kind": "none",
+      "min_qty": 0
+    },
+    {
+      "code": "SHS",
+      "name": "Shorts set",
+      "aliases": [
+        "shorts"
+      ],
+      "category": "shorts",
+      "rate_rupees": 85,
+      "hsn": "6104",
+      "min_kind": "total",
+      "min_qty": 10
+    },
+    {
+      "code": "PNS",
+      "name": "Pant set",
+      "aliases": [
+        "pant set"
+      ],
+      "category": "pants",
+      "rate_rupees": 95,
+      "hsn": "6104",
+      "min_kind": "total",
+      "min_qty": 24
+    },
+    {
+      "code": "STP",
+      "name": "Stone pant",
+      "aliases": [
+        "stone pants"
+      ],
+      "category": "pants",
+      "rate_rupees": 45,
+      "hsn": "6104",
+      "min_kind": "total",
+      "min_qty": 24
+    },
+    {
+      "code": "PPL",
+      "name": "Plain palazzo",
+      "aliases": [
+        "plain palazzo pant"
+      ],
+      "category": "palazzo",
+      "rate_rupees": 65,
+      "hsn": "6104",
+      "min_kind": "total",
+      "min_qty": 24
+    },
+    {
+      "code": "PRP",
+      "name": "Print palazzo",
+      "aliases": [
+        "printed palazzo",
+        "print palazzo pant"
+      ],
+      "category": "palazzo",
+      "rate_rupees": 68,
+      "hsn": "6104",
+      "min_kind": "total",
+      "min_qty": 24
+    },
+    {
+      "code": "KPT",
+      "name": "Kids pant",
+      "aliases": [
+        "kids pants"
+      ],
+      "category": "kids",
+      "rate_rupees": 28,
+      "hsn": "6104",
+      "min_kind": "per_size",
+      "min_qty": 10
+    },
+    {
+      "code": "PCS",
+      "name": "Popcorn pant set",
+      "aliases": [
+        "popcorn set"
+      ],
+      "category": "pants",
+      "rate_rupees": 95,
+      "hsn": "6104",
+      "min_kind": "total",
+      "min_qty": 24
+    },
+    {
+      "code": "GPT",
+      "name": "Girls pant",
+      "aliases": [
+        "girls pants"
+      ],
+      "category": "kids",
+      "rate_rupees": 55,
+      "hsn": "6104",
+      "min_kind": "per_size",
+      "min_qty": 10
+    },
+    {
+      "code": "KPS",
+      "name": "Kids palazzo set",
+      "aliases": [
+        "kids palazzo"
+      ],
+      "category": "kids",
+      "rate_rupees": 120,
+      "hsn": "6104",
+      "min_kind": "per_size",
+      "min_qty": 10
+    },
+    {
+      "code": "CRT",
+      "name": "Crop top",
+      "aliases": [
+        "croptop",
+        "crop tops"
+      ],
+      "category": "crop",
+      "rate_rupees": 75,
+      "hsn": "6109",
+      "min_kind": "per_size",
+      "min_qty": 6,
+      "rate_note": "estimate"
+    }
+  ]
+}
