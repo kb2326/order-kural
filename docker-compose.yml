@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Compose reads .env (if present) for this value. With no .env the key is empty and the app shows a
+      # "key not set" banner. This form works on every Compose v2 version.
+      SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+    volumes:
+      - orderkural-data:/app/data/runtime
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  orderkural-data:

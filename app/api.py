@@ -1,0 +1,107 @@
+"""HTTP API. Money is sent both as paise (for code) and as formatted rupees (for people)."""
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request
+
+from app.domain.changes import PieceResult
+from app.domain.money import format_inr
+from app.domain.order import Order
+from app.domain.rules import compute_totals
+from app.flow.pieces import PieceService, PieceStateError, Proposal
+
+SAMPLE_LABEL = "Sample: saved AI results"
+SAMPLE_FILE = Path(__file__).parent / "sample" / "conversation.json"
+
+router = APIRouter(prefix="/api")
+
+
+def _svc(request: Request) -> PieceService:
+    return request.app.state.pieces
+
+
+def _totals_json(totals) -> dict:
+    return {"subtotal_paise": totals.subtotal_paise, "subtotal": format_inr(totals.subtotal_paise),
+            "gst_paise": totals.gst_paise, "gst": format_inr(totals.gst_paise),
+            "total_paise": totals.total_paise, "total": format_inr(totals.total_paise)}
+
+
+def order_json(order: Order, svc: PieceService) -> dict:
+    totals = compute_totals(order, svc.catalog)
+    lines = []
+    for l in order.lines:
+        item = svc.catalog.get(l.item_code)
+        amount = totals.line_totals[l.item_code]
+        lines.append({"item_code": l.item_code, "name": item.name if item else l.item_code, "sizes": l.sizes,
+                      "quantity": l.quantity, "rate_paise": l.rate_paise, "rate": format_inr(l.rate_paise),
+                      "line_total_paise": amount, "line_total": format_inr(amount), "flags": l.flags,
+                      "source_piece_id": l.source_piece_id})
+    return {"id": order.id, "customer_name": order.customer_name, "city": order.city, "state": order.state,
+            "transport": order.transport, "payment": order.payment, "lines": lines, "totals": _totals_json(totals)}
+
+
+def proposal_json(p: Proposal, svc: PieceService) -> dict:
+    return {"piece_id": p.piece_id, "order_id": p.order_id, "is_new_order": p.is_new_order,
+            "order": order_json(p.order, svc), "diff": [asdict(d) for d in p.diff],
+            "totals": _totals_json(p.totals), "missing": p.missing, "problems": p.problems,
+            "readback": p.readback, "ask_customer": p.ask_customer}
+
+
+@router.post("/sample/reset")
+def sample_reset(request: Request) -> dict:
+    _svc(request).store.reset()
+    return {"ok": True}
+
+
+@router.post("/sample/next")
+def sample_next(request: Request) -> dict:
+    svc = _svc(request)
+    pieces = json.loads(SAMPLE_FILE.read_text(encoding="utf-8"))["pieces"]
+    done = svc.store.count_pieces("sample")
+    if done >= len(pieces):
+        raise HTTPException(status_code=409, detail="Sample finished")
+    piece = pieces[done]
+    proposal = svc.propose(piece["transcript"], PieceResult.model_validate(piece["ai_result"]), source="sample")
+    return {"label": SAMPLE_LABEL, "index": done + 1, "total": len(pieces), "transcript": piece["transcript"],
+            "proposal": proposal_json(proposal, svc)}
+
+
+@router.post("/pieces/{piece_id}/confirm")
+def confirm_piece(piece_id: int, request: Request) -> dict:
+    svc = _svc(request)
+    try:
+        return order_json(svc.confirm(piece_id), svc)
+    except PieceStateError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/pieces/{piece_id}/discard")
+def discard_piece(piece_id: int, request: Request) -> dict:
+    try:
+        _svc(request).discard(piece_id)
+    except PieceStateError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"ok": True}
+
+
+@router.get("/orders")
+def list_orders(request: Request) -> list[dict]:
+    svc = _svc(request)
+    out = []
+    for o in svc.store.open_orders():
+        t = compute_totals(o, svc.catalog)
+        out.append({"id": o.id, "customer_name": o.customer_name, "city": o.city, "state": o.state,
+                    "line_count": len(o.lines), "total_paise": t.total_paise, "total": format_inr(t.total_paise)})
+    return out
+
+
+@router.get("/orders/{order_id}")
+def get_order(order_id: int, request: Request) -> dict:
+    svc = _svc(request)
+    order = svc.store.get_order(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order_json(order, svc)
