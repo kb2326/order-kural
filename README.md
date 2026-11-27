@@ -5,8 +5,8 @@
 A voice-first order book for small garment wholesalers in Tirupur, Tamil Nadu. Built for the Scaler × Wispr
 "India Runs on Voice" hackathon (track: livelihoods and small business).
 
-> **Status:** working now: the app starts with no keys (S0), and the order engine plus the sample conversation run end
-> to end (S1). Coming next: live voice in Tamil and other languages (S2–S4), then the bill and khata (S5).
+> **Status (27 Nov):** the order engine and the no-key sample work end to end. **Live voice and live AI are being
+> built now**; the sample uses saved AI answers in place of the AI. See [What works today](#what-works-today).
 
 <p align="center"><img src="docs/round2/screens/s1-sample.png" alt="Three voice pieces from Kerala Fancy become one order of ₹8,328.60" width="360"></p>
 
@@ -26,6 +26,21 @@ A voice-first order book for small garment wholesalers in Tirupur, Tamil Nadu. B
 3. **Code does the maths:** list rates, minimum quantities, GST. Money is exact, in paise.
 4. **It reads the change back.** You say **"sari"** (OK) and only then is the order updated.
 5. **Bill, khata, to-ship:** one order flows into a GST bill, a credit entry and the shipping list.
+
+## What works today
+
+| Part | State | Where |
+|---|---|---|
+| Starts with one command and no keys; "key not set" banner | ✅ Working, checked by CI on every push | `docker-compose.yml`, `.github/workflows/ci.yml` |
+| Order engine: merge pieces, list rates, minimums, rate checks, GST in paise | ✅ Working, unit-tested | `app/domain/` |
+| Nothing saved until "sari"; double taps and stale pieces refused | ✅ Working, tested | `app/flow/pieces.py` |
+| Sample conversation (3 pieces → one ₹8,328.60 order) | ✅ Working, **on saved AI answers, no audio** | `app/sample/` |
+| Speech to text (Sarvam Saaras) | 🔨 Building (S2). Tested once by script on a real Hindi voice note | |
+| AI understanding (sarvam-105b, strict JSON) | 🔨 Building (S3). One real call tested; it made mistakes we now guard against | |
+| Spoken read-back in Tamil / Hindi; "sari" by voice | ⏳ Planned (S4) | |
+| Play the voice note behind each line | ⏳ Planned (S3) | |
+| Eval set and accuracy report | ⏳ Planned (S3) | |
+| GST bill, khata, to-ship | ⏳ Planned (S5) | |
 
 ## Run it in one command
 
@@ -48,9 +63,10 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt   # Window
 .venv/bin/python -m pytest -q
 ```
 
-## How an order is built
+## How an order is built (target design; live voice in progress)
 
-Three pieces, minutes or hours apart, become one order.
+Three pieces, minutes or hours apart, become one order. Today the sample runs this flow from the "AI" step onward with
+saved answers; the speech and AI calls are being wired in.
 
 ```mermaid
 sequenceDiagram
@@ -114,7 +130,7 @@ flowchart LR
 | **AI output format** | `app/domain/changes.py` | The exact shape the AI must answer in: which customer, and a list of changes (`add_line`, `change_line`, `remove_line`, `set_field`). Anything else is rejected, e.g. a negative quantity. |
 | **Order engine** | `app/domain/order.py` | Applies a change list to an order. The same item twice merges into one line; an unknown item is reported, never guessed. |
 | **Rules** | `app/domain/rules.py` | The maths, in code: line totals, GST (5% up to ₹2,500 a piece, else 18%), minimum-quantity and off-list-rate warnings, what's still missing (transport, payment). |
-| **Store** | `app/store/db.py` | A SQLite file. Keeps customers, orders, lines, every voice piece and every applied change, so each line can be traced to the voice note it came from. |
+| **Store** | `app/store/db.py` | A SQLite file. Keeps customers, orders, lines, every voice piece and every applied change. Each line records which piece last changed it; playing that piece's audio comes with live voice (S3). |
 | **Sample conversation** | `app/sample/conversation.json` | Three saved voice pieces with saved AI answers, so anyone can see the full flow **without an API key**. |
 | **Providers** (next) | `app/providers/` | Speech-to-text, AI and voice reply from Sarvam, each behind a small interface so another engine (for example Wispr's API) can plug in later. |
 

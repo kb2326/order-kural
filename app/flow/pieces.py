@@ -37,9 +37,11 @@ class Proposal:
 
 def candidates(ref: CustomerRef, open_orders: list[Order]) -> list[Order]:
     """Open orders this piece could belong to: the id the AI named, else same name in a compatible city."""
-    by_id = [o for o in open_orders if o.id is not None and ref.match == str(o.id)]
+    by_id = [o for o in open_orders if ref.order_id is not None and o.id == ref.order_id]
     if by_id:
         return by_id
+    if not ref.name_as_spoken:
+        return []
     wanted, city = normalise(ref.name_as_spoken), normalise(ref.city or "")
     return [o for o in open_orders
             if normalise(o.customer_name) == wanted
@@ -53,7 +55,7 @@ def resolve_target(ref: CustomerRef, open_orders: list[Order]) -> Order | None:
 
 
 def _new_order(ref: CustomerRef) -> Order:
-    return Order(id=None, customer_name=ref.name_as_spoken.strip(), city=ref.city, state="open",
+    return Order(id=None, customer_name=(ref.name_as_spoken or "?").strip(), city=ref.city, state="open",
                  transport=None, payment=None, lines=[])
 
 
@@ -72,7 +74,7 @@ class PieceService:
             problems.append("Customer not heard")
         open_orders = self.store.open_orders()
         found = candidates(ref, open_orders) if ref else []
-        ask_customer = ref is None or ref.confidence == "low" or len(found) > 1
+        ask_customer = ref is None or not ref.said or ref.confidence == "low" or len(found) > 1
 
         target = found[0] if len(found) == 1 else None
         base = target or (_new_order(ref) if ref else _new_order(CustomerRef(name_as_spoken="?")))

@@ -37,3 +37,9 @@ def test_payment_set_field():
 
 def test_piece_result_json_schema_exists():
     assert PieceResult.model_json_schema()["title"] == "PieceResult"
+
+
+def test_customer_match_rejects_free_text():
+    from app.domain.changes import CustomerRef
+    with pytest.raises(ValidationError):
+        CustomerRef(name_as_spoken="Kerala Fancy", match="existing-ish")

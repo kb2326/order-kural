@@ -41,10 +41,16 @@ Change = Annotated[AddLine | ChangeLine | RemoveLine | SetField, Field(discrimin
 
 
 class CustomerRef(BaseModel):
-    name_as_spoken: str
+    """Who the piece is for. A forwarded customer note often never says the shop's name: then name is None."""
+    name_as_spoken: str | None = None
     city: str | None = None
-    match: str = "new"  # "new", or the id of an open order
+    match: Literal["new", "existing"] = "new"
+    order_id: int | None = None  # the open order the AI picked, when match is "existing"
     confidence: Literal["high", "low"] = "high"
+
+    @property
+    def said(self) -> bool:
+        return bool(self.order_id or (self.name_as_spoken and self.name_as_spoken.strip()))
 
 
 class PieceResult(BaseModel):

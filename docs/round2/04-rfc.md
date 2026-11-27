@@ -209,11 +209,11 @@ always on screen.
 
 ### 4.8 No-key sample mode (PRD R9; ADR-006)
 
-The app ships with one **sample conversation**: three recorded Tamil pieces made by the team (our own voices, made-up
-shop names), each with its saved transcript and saved AI result. "Try the sample conversation" replays them through
-the **same** piece and order state machines, rules engine, bill and khata code, so a judge without keys sees pieces
-merging into one order and the bill. The screen labels it "Sample: saved AI results". With keys set, the same audio
-goes to the live providers instead.
+The app ships with one **sample conversation**: three Tamil pieces with a made-up shop name, each with its saved
+transcript and saved AI result. **Status 27 Nov:** the pieces have no audio yet; S4 adds synthetic audio made with
+Sarvam Bulbul, labelled "synthetic voice". "Try the sample conversation" replays them through the **same** piece and
+order state machines and rules engine (bill and khata from S5), so a judge without keys sees pieces merging into one
+order. The screen labels it "Sample: saved AI results". With keys set, the same audio can go to the live providers.
 
 ## 5. Data model (SQLite)
 

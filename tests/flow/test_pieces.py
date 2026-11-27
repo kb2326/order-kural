@@ -189,3 +189,17 @@ def test_two_open_orders_same_name_asks_customer(svc, store):
         svc.confirm(a.piece_id)
     p = run(svc, {**P3, "customer": {"name_as_spoken": "Ravi Textiles", "match": "existing"}})
     assert p.ask_customer is True
+
+
+def test_order_id_routes_directly(svc, store):
+    a = run(svc, P1)
+    svc.confirm(a.piece_id)
+    oid = store.open_orders()[0].id
+    p = run(svc, {**P3, "customer": {"name_as_spoken": "KF shop", "match": "existing", "order_id": oid}})
+    assert p.is_new_order is False and p.order_id == oid
+
+
+def test_customer_not_said_asks(svc, store):
+    p = run(svc, {**P1, "customer": {"match": "new"}})
+    assert p.ask_customer is True
+    assert store.get_piece(p.piece_id)["state"] == "proposed"
