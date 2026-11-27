@@ -1,15 +1,18 @@
 """HTTP API. Money is sent both as paise (for code) and as formatted rupees (for people)."""
 from __future__ import annotations
 
+import asyncio
+import importlib
 import json
 import os
 from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, WebSocket
 from pydantic import BaseModel
 
+from app.agent import say
 from app.agent.session import AgentSession
 from app.agent.text_loop import TextBrain
 from app.domain.changes import PieceResult
@@ -83,11 +86,15 @@ def _key() -> str:
 
 def _agent(request: Request) -> AgentSession:
     """One agent conversation per browser tab (header X-Agent-Session), all sharing the live shop database."""
-    sid = request.headers.get("X-Agent-Session", "").strip()[:64] or "default"
-    sessions: OrderedDict[str, AgentSession] = request.app.state.agent_sessions
+    return _agent_for(request.app, request.headers.get("X-Agent-Session", ""))
+
+
+def _agent_for(app, sid: str) -> AgentSession:
+    sid = sid.strip()[:64] or "default"
+    sessions: OrderedDict[str, AgentSession] = app.state.agent_sessions
     agent = sessions.get(sid)
     if agent is None:
-        live = request.app.state.pieces
+        live = app.state.pieces
         agent = AgentSession(live, ShopService(live.store, live.catalog))
         sessions[sid] = agent
         while len(sessions) > MAX_AGENT_SESSIONS:
@@ -141,6 +148,27 @@ def agent_confirm(request: Request) -> dict:
 @router.post("/agent/discard")
 def agent_discard(request: Request) -> dict:
     return _tap(request, "cancel", "discard")
+
+
+@router.websocket("/voice")
+async def voice(ws: WebSocket, session: str = "", lang: str = "ta-IN") -> None:
+    """Live talk. The browser can't set headers on a WebSocket, so the tab's agent session id comes as ?session=,
+    and the reply language as ?lang= (live STT labels code-mixed speech en-IN, so it can't choose the language)."""
+    if _key():
+        # Pipecat takes seconds to import; doing it in a thread keeps the server answering meanwhile.
+        await asyncio.to_thread(importlib.import_module, "app.voice.bot")
+    await ws.accept()
+    if not _key():
+        await ws.close(code=4003, reason=NO_KEY)
+        return
+    ip = ws.client.host if ws.client else "unknown"
+    if not ws.app.state.voice_limiter.allow(ip):
+        await ws.close(code=4029, reason="Too many voice sessions. Please try again later.")
+        return
+    from app.voice.bot import run  # Pipecat loads only when someone talks, so a keyless start never needs it
+    agent = _agent_for(ws.app, session)
+    agent.language = say.lang(lang)
+    await run(ws, agent, _key())
 
 
 @router.get("/agent/state")

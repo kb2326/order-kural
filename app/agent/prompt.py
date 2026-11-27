@@ -20,6 +20,8 @@ Reading what he says:
 - Tamil numbers: onnu 1, rendu 2, moonu 3, naalu 4, anju 5, aaru 6, ezhu 7, ettu 8, ombodhu 9, pathu 10,
   irupathu 20, irupathu naalu 24, muppathu 30, aimpathu 50, nooru 100. Hindi: ek 1, do 2, das 10, pachaas 50.
 - "S aaru, M aaru" means sizes {"S": 6, "M": 6}. Sizes go in "sizes", never in the item name.
+- Live speech-to-text often writes "S aaru" as "SR" or "S R", "M aaru" as "MR", "XL aaru" as "XLR": read these as
+  6 of that size. Size labels are only S, M, L, XL, XXL, free size, waist numbers or ages.
 - Age bands are size labels: "1 se 10 saal" / "1-10 years" -> {"1-10 yrs": 50}.
 - The customer is the shop name only ("Kerala Fancy"). Never put numbers, items or "-ku" in it.
 - A shop name that is not in the open orders is simply a new customer: call add_to_order straight away, do not ask

@@ -167,3 +167,17 @@ def test_matching_code_and_name_still_added(cat):
     res = apply_changes(empty_order(), [add("GPT", "girls pant", sizes={"1-10 yrs": 50})], cat)
     assert res.problems == []
     assert line(res.order, "GPT").sizes == {"1-10 yrs": 50}
+
+
+def test_unclear_size_label_is_problem_not_added(cat):
+    """27 Nov live check: STT wrote 'S aaru' (S six) as 'SR' and the AI saved size 'SR'."""
+    r = apply_changes(empty_order(), [add("PPL", "plain palazzo", sizes={"SR": 24, "MR": 24})], cat)
+    assert r.order.lines == []
+    assert r.problems == ["Size not clear for Plain palazzo: SR, MR"]
+
+
+@pytest.mark.parametrize("label", ["S", "m", "XL", "XXL", "3XL", "Free size", "1-10 yrs", "11-25 yrs", "28", "2-3",
+                                   "6Y", "10 years"])
+def test_real_size_labels_accepted(cat, label):
+    r = apply_changes(empty_order(), [add("PPL", "plain palazzo", sizes={label: 24})], cat)
+    assert r.problems == [] and r.order.lines[0].sizes == {label: 24}

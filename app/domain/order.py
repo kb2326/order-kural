@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -47,6 +48,12 @@ class ApplyResult:
     problems: list[str]
 
 
+# Real size labels: letter sizes, free size, waist numbers, ages and age bands. Anything else (e.g. "SR", which is
+# speech-to-text writing "S aaru" = S six) is reported instead of saved.
+SIZE_LABEL = re.compile(r"^(xs|s|m|l|xl|xxl|xxxl|[2-6]xl|free( size)?|\d{1,2}(\s*-\s*\d{1,2})?"
+                        r"(\s*(y|yr|yrs|year|years|m|months))?)$", re.IGNORECASE)
+
+
 def describe(line: OrderLine) -> str:
     """'S 6, M 6, L 6' when sized, else the plain quantity '24'."""
     if line.sizes:
@@ -70,6 +77,10 @@ def _add(new: Order, ch: AddLine, catalog: Catalog, diff: list[DiffEntry], probl
         problems.append(f"Unknown item: {ch.name_as_spoken}{hint}")
         return
     sizes = {s: q for s, q in ch.sizes.items() if q > 0}
+    unclear = [s for s in sizes if not SIZE_LABEL.match(s.strip())]
+    if unclear:
+        problems.append(f"Size not clear for {item.name}: {', '.join(unclear)}")
+        return
     added = sum(sizes.values()) if sizes else (ch.quantity_total or 0)
     if added == 0:
         problems.append(f"No quantity for: {ch.name_as_spoken}")

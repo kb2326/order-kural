@@ -61,3 +61,20 @@ def test_rate_limiter_counts_per_ip_and_day():
     assert rl.allow("c") is False  # day cap of 3 reached
     now[0] = 3601.0
     assert rl.allow("a") is False  # still the same day
+
+
+def test_voice_ws_closes_4003_without_key(client, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+    with client.websocket_connect("/api/voice?session=t1") as ws:
+        with pytest.raises(WebSocketDisconnect) as e:
+            ws.receive_text()
+    assert e.value.code == 4003
+
+
+def test_app_start_does_not_import_pipecat():
+    import subprocess
+    import sys
+    code = "import sys, app.main; print('pipecat' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False"
