@@ -30,6 +30,10 @@ CREATE TABLE IF NOT EXISTS voice_pieces (
 CREATE TABLE IF NOT EXISTS order_events (
     id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL, piece_id INTEGER NOT NULL, change_json TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS bills (
+    id INTEGER PRIMARY KEY, number INTEGER NOT NULL UNIQUE, order_id INTEGER NOT NULL REFERENCES orders(id),
+    customer_id INTEGER NOT NULL REFERENCES customers(id), total_paise INTEGER NOT NULL, lines_json TEXT NOT NULL,
+    voided INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS traces (
     id INTEGER PRIMARY KEY, piece_id INTEGER, span TEXT NOT NULL, provider TEXT, ms INTEGER, cost_paise INTEGER,
     ok INTEGER NOT NULL DEFAULT 1, error TEXT, meta_json TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -129,6 +133,40 @@ class Store:
                   l.source_piece_id) for i, l in enumerate(order.lines)])
         return order_id
 
+    def orders_in_states(self, states: list[str]) -> list[Order]:
+        marks = ",".join("?" * len(states))
+        with self.lock:
+            rows = self.conn.execute(self._ORDER_SQL + f" WHERE o.state IN ({marks}) ORDER BY o.id", states).fetchall()
+            return [self._load_order(r) for r in rows]
+
+    def set_order_state(self, order_id: int, state: str) -> None:
+        with self.tx():
+            self.conn.execute("UPDATE orders SET state=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", (state, order_id))
+
+    def customer_id_of_order(self, order_id: int) -> int:
+        with self.lock:
+            return self.conn.execute("SELECT customer_id FROM orders WHERE id=?", (order_id,)).fetchone()[0]
+
+    # ---- bills --------------------------------------------------------------------------------------------
+    def next_bill_number(self) -> int:
+        with self.lock:
+            return self.conn.execute("SELECT COALESCE(MAX(number), 0) + 1 FROM bills").fetchone()[0]
+
+    def save_bill(self, *, number: int, order_id: int, customer_id: int, total_paise: int, lines_json: str) -> int:
+        with self.tx():
+            return self.conn.execute(
+                "INSERT INTO bills(number, order_id, customer_id, total_paise, lines_json) VALUES (?, ?, ?, ?, ?)",
+                (number, order_id, customer_id, total_paise, lines_json)).lastrowid
+
+    def get_bill(self, number: int) -> dict | None:
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM bills WHERE number=?", (number,)).fetchone()
+        return dict(row) if row else None
+
+    def set_bill_voided(self, number: int) -> None:
+        with self.tx():
+            self.conn.execute("UPDATE bills SET voided=1 WHERE number=?", (number,))
+
     # ---- voice pieces -------------------------------------------------------------------------------------
     def add_piece(self, transcript: str, source: Literal["live", "sample"], audio_path: str | None) -> int:
         with self.tx():
@@ -194,5 +232,5 @@ class Store:
 
     def reset(self) -> None:
         with self.tx():
-            for table in ("order_events", "order_lines", "orders", "customers", "voice_pieces", "traces"):
+            for table in ("order_events", "order_lines", "bills", "orders", "customers", "voice_pieces", "traces"):
                 self.conn.execute(f"DELETE FROM {table}")
