@@ -109,6 +109,13 @@ T: dict[str, dict[str, str]] = {
         "ml-IN": "പണം സേവ് ചെയ്തു. {customer} ഇനി {balance} തരാനുണ്ട്.",
         "kn-IN": "ಹಣ ಉಳಿಸಲಾಗಿದೆ. {customer} ಇನ್ನೂ {balance} ಕೊಡಬೇಕು.",
     },
+    "payment_saved_advance": {
+        "en-IN": "Payment saved. {customer} has {balance} paid in advance.",
+        "ta-IN": "பணம் சேமிச்சாச்சு. {customer} {balance} முன்பணமா கொடுத்திருக்காங்க.",
+        "hi-IN": "पेमेंट सेव हो गया. {customer} का {balance} एडवांस जमा है.",
+        "ml-IN": "പണം സേവ് ചെയ്തു. {customer} {balance} മുൻകൂറായി തന്നിട്ടുണ്ട്.",
+        "kn-IN": "ಹಣ ಉಳಿಸಲಾಗಿದೆ. {customer} {balance} ಮುಂಗಡವಾಗಿ ಕೊಟ್ಟಿದ್ದಾರೆ.",
+    },
     "shipped_staged": {
         "en-IN": "Mark {customer} order as shipped{by}? Say sari.",
         "ta-IN": "{customer} ஆர்டர் அனுப்பியாச்சுன்னு{by} போடவா? சரி சொல்லுங்க.",
@@ -197,8 +204,10 @@ def render(kind: str, facts: dict, language: str) -> str:
         f["total"] = money(f["total_paise"])
     if "amount_paise" in f:
         f["amount"] = money(f["amount_paise"])
+    if kind == "payment_saved" and f.get("balance_paise", 0) < 0:
+        kind = "payment_saved_advance"  # a negative balance is money paid ahead, never "owes -Rs X"
     if "balance_paise" in f:
-        f["balance"] = money(f["balance_paise"])
+        f["balance"] = money(abs(f["balance_paise"]) if kind == "payment_saved_advance" else f["balance_paise"])
     if "changes" in f:
         f["changes"] = "; ".join(f["changes"])
     if kind == "problems":

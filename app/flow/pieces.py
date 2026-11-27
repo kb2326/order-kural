@@ -139,6 +139,10 @@ class PieceService:
             self.store.update_piece(piece_id, order_id=order_id)
             return self.store.get_order(order_id)
 
+    def discard_if_waiting(self, piece_id: int) -> None:
+        """Drop a piece that will never be confirmed (it may never have reached read_back)."""
+        self.store.claim_piece(piece_id, "read_back", "discarded")
+
     def discard(self, piece_id: int) -> None:
         with self.store.tx():
             self._waiting(piece_id)

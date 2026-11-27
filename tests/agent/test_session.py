@@ -216,3 +216,34 @@ def test_add_to_order_reassembles_streamed_json_fragments(agent):
                  '"L": 6', '"XL": 6}}]}]']
     r = agent.add_to_order("Kerala Fancy", fragments)
     assert agent.pending is not None and "₹1,560" in r.say
+
+
+def test_new_order_with_no_items_is_not_staged(agent):
+    """27 Nov eval: a new order with only 'transport KPN' (item quantity missing) was savable at Rs 0."""
+    r = agent.add_to_order("Kerala Fancy", [{"name_as_spoken": "print palazzo", "item_code": "PRP"}], transport="KPN")
+    assert agent.pending is None and "No quantity for: print palazzo" in r.say
+
+
+def test_age_band_not_said_is_refused(agent):
+    """27 Nov eval: the LLM put '1-10 yrs' on 'shorts set 20', copying a prompt example."""
+    agent.heard("Lakshmi Tex-ku shorts set 20", "ta-IN")
+    r = agent.add_to_order("Lakshmi Tex", [{"name_as_spoken": "shorts set", "item_code": "SHS",
+                                           "sizes": {"1-10 yrs": 20}}])
+    assert agent.pending is None and "Size not said: 1-10 yrs" in r.say
+
+
+def test_age_band_said_in_an_earlier_turn_is_accepted(agent):
+    agent.heard("Forwarded voice note from a buyer: girls pant 1 se 10 saal 50 piece", "hi-IN")
+    agent.heard("Sri Murugan Tex, Erode", "ta-IN")
+    r = agent.add_to_order("Sri Murugan Tex", [{"name_as_spoken": "girls pant", "item_code": "GPT",
+                                               "sizes": {"1-10 yrs": 50}}], city="Erode")
+    assert agent.pending is not None and "₹2,750" in r.say
+
+
+def test_invented_sizes_drop_only_those_lines(agent):
+    agent.heard("Lakshmi Tex-ku crop top S pathu M pathu, shorts set 20", "ta-IN")
+    r = agent.add_to_order("Lakshmi Tex", [
+        {"name_as_spoken": "crop top", "item_code": "CRT", "sizes": {"S": 10, "M": 10}},
+        {"name_as_spoken": "shorts set", "item_code": "SHS", "sizes": {"1-10 yrs": 20}}])
+    assert agent.pending is not None and [l["item"] for l in agent.pending.view["lines"]] == ["Crop top"]
+    assert "Size not said: 1-10 yrs" in r.say

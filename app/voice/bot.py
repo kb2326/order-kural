@@ -27,6 +27,7 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 from app.agent import say, words
+from app.agent.numbers import digits
 from app.agent.prompt import system_prompt
 from app.agent.session import TOOL_NAMES, AgentSession
 from app.agent.tools import TOOL_SPECS
@@ -75,6 +76,7 @@ class Ears(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TranscriptionFrame):
+            frame.text = digits(frame.text)  # Tamil number words -> digits before the AI
             await self._heard(frame.text)
         elif isinstance(frame, LLMMessagesAppendFrame) and frame.messages:
             await self._heard(str(frame.messages[-1].get("content", "")))
@@ -102,7 +104,9 @@ class Mouth(FrameProcessor):
         if isinstance(frame, LLMTextFrame):
             self.clock["said"] = self.clock.get("said", "") + frame.text
         if isinstance(frame, LLMFullResponseEndFrame) and not self.clock.get("warned") \
-                and words.unbacked_claim(self.clock.get("said", ""), self.clock.get("tool_turn", False)):
+                and words.unbacked_claim(self.clock.get("said", ""), self.clock.get("tool_turn", False),
+                                         tuple(n.casefold() for i in self.session.catalog.all()
+                                               for n in (i.name, *i.aliases))):
             # The AI claimed an action no tool performed (27 Nov live check): correct it out loud, in code.
             self.clock["warned"] = True
             fix = say.render("not_done", {}, self.session.language)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -23,6 +24,8 @@ from app.domain.rules import normalise_payment
 from app.flow import ask
 from app.flow.pieces import PieceService, Proposal
 from app.flow.shop import ShopError, ShopService
+
+RECENT_TURNS = 6
 
 TOOL_NAMES = ("find_customer", "get_open_order", "add_to_order", "change_line", "remove_line", "set_detail",
               "bill_order", "record_payment", "mark_shipped", "ask_shop", "confirm_pending", "discard_pending")
@@ -80,11 +83,13 @@ class AgentSession:
         self.pending: Pending | None = None
         self.language = say.DEFAULT
         self.last_user_text = ""
+        self.recent_heard: list[str] = []  # the last few things the owner said, for grounding checks
 
     # ---- plumbing ------------------------------------------------------------------------------------------
     def heard(self, text: str, language: str | None = None) -> None:
         """Called by every brain before each LLM turn, with what the owner just said."""
         self.last_user_text = text
+        self.recent_heard = (self.recent_heard + [text])[-RECENT_TURNS:]
         if language:
             self.language = say.lang(language)
 
@@ -163,8 +168,21 @@ class AgentSession:
     def set_detail(self, customer: str, field: str, value: str) -> ToolResult:
         return self._stage_order(customer, None, [{"op": "set_field", "field": field, "value": value}])
 
+    def _ungrounded_sizes(self, change: dict) -> list[str]:
+        """Size labels with numbers (ages, waists) whose numbers the owner never said in his recent words
+        (27 Nov eval: the LLM put '1-10 yrs' on 'shorts set 20'). Letter sizes are not checked: live STT writes
+        them oddly ('SR' for 'S aaru')."""
+        said = set(re.findall(r"\d+", " ".join(self.recent_heard)))
+        return [label for label in (change.get("sizes") or {})
+                if re.search(r"\d", label) and not set(re.findall(r"\d+", label)) <= said]
+
     def _stage_order(self, customer: str, city: str | None, changes: list[dict]) -> ToolResult:
         customer = (customer or "").strip()
+        # Drop only the lines whose sizes were never said; keep the rest and tell the owner which were dropped.
+        size_problems = [f"Size not said: {label}" for ch in changes for label in self._ungrounded_sizes(ch)]
+        changes = [ch for ch in changes if not self._ungrounded_sizes(ch)]
+        if size_problems and not changes:
+            return self._say("problems", {"customer": customer or "?", "problems": size_problems}, wrote=False)
         if not customer:
             return self._say("ask_customer", {"near": None}, wrote=False)
         busy = self._busy(customer, "order")
@@ -179,8 +197,11 @@ class AgentSession:
         if proposal.ask_customer:
             near = self._near_customer(customer) if proposal.readback.startswith("Is this for") else None
             return self._say("ask_customer", {"near": near}, wrote=False)
-        if not proposal.diff:
-            return self._say("problems", {"customer": customer, "problems": proposal.problems}, wrote=False)
+        if not proposal.diff or (proposal.is_new_order and not proposal.order.lines):
+            # Nothing usable, or a new order with no items (27 Nov eval: a Rs 0 order with only a transport).
+            problems = proposal.problems or ["No items in the order yet"]
+            self.pieces.discard_if_waiting(proposal.piece_id)
+            return self._say("problems", {"customer": customer, "problems": problems}, wrote=False)
         if old and old.piece_id:
             self.pieces.discard(old.piece_id)
         latest: dict[str, str] = {}  # one phrase per item or field, with its final value
@@ -194,9 +215,10 @@ class AgentSession:
                                changes=combined, city=city,
                                view={"lines": self._lines_view(proposal.order), "total_paise": total,
                                      "transport": proposal.order.transport, "payment": proposal.order.payment,
-                                     "problems": proposal.problems, "is_new_order": proposal.is_new_order})
+                                     "problems": size_problems + proposal.problems,
+                                     "is_new_order": proposal.is_new_order})
         return self._say("staged", {"customer": proposal.order.customer_name, "changes": changed + removed,
-                                    "total_paise": total, "problems": proposal.problems,
+                                    "total_paise": total, "problems": size_problems + proposal.problems,
                                     "piece_id": proposal.piece_id}, wrote=True)
 
     # ---- bill, payment, shipping ---------------------------------------------------------------------------

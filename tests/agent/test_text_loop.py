@@ -121,3 +121,16 @@ def test_unbacked_claim_is_corrected_in_code():
     r = b.turn("girls pant 50 piece", "ta-IN")
     from app.agent import say
     assert r.spoken[-1] == say.render("not_done", {}, "ta-IN") and len(r.spoken) == 2
+
+
+def test_item_echo_without_a_tool_is_corrected():
+    """27 Nov eval: the LLM echoed 'Kerala Fancy-ku crop top S aaru M aaru' and called no tool."""
+    b, _ = brain(Script(text("Kerala Fancy-ku crop top S aaru M aaru L aaru.")))
+    r = b.turn("appuram crop top S aaru M aaru L aaru", "ta-IN")
+    from app.agent import say
+    assert r.spoken[-1] == say.render("not_done", {}, "ta-IN")
+
+
+def test_question_about_an_item_is_not_corrected():
+    b, _ = brain(Script(text("Crop top-ku M size-la ethana?")))
+    assert len(b.turn("crop top venum", "ta-IN").spoken) == 1

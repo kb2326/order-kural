@@ -60,3 +60,9 @@ def test_lang_maps_stt_codes():
     assert say.lang("ml") == "ml-IN"
     assert say.lang(None) == "ta-IN"
     assert say.lang("te-IN") == "en-IN"
+
+
+def test_payment_saved_with_negative_balance_says_advance():
+    text = say.render("payment_saved", {"customer": "Kerala Fancy", "balance_paise": -100000}, "en-IN")
+    assert "advance" in text and "₹1,000" in text and "-₹" not in text
+    assert "-₹" not in say.render("payment_saved", {"customer": "Kerala Fancy", "balance_paise": -100000}, "ta-IN")

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from app.agent import say, words
+from app.agent.numbers import digits
 from app.agent.prompt import system_prompt
 from app.agent.session import AgentSession
 from app.agent.tools import TOOL_SPECS
@@ -59,6 +60,7 @@ class TextBrain:
         return data["choices"][0]["message"]
 
     def turn(self, user_text: str, language: str | None = None) -> TurnResult:
+        user_text = digits(user_text)  # Tamil number words -> digits, in code
         self.session.heard(user_text, language)
         self.messages.append({"role": "user", "content": user_text})
         result = TurnResult(spoken=[])
@@ -95,7 +97,9 @@ class TextBrain:
         except (httpx.HTTPError, KeyError, IndexError, ValueError):
             result.error = FAIL
             result.spoken = [FAIL]
-        if not result.error and result.spoken and words.unbacked_claim(result.spoken[-1], bool(result.tool_calls)):
+        names = tuple(n.casefold() for i in self.session.catalog.all() for n in (i.name, *i.aliases))
+        if not result.error and result.spoken and words.unbacked_claim(result.spoken[-1], bool(result.tool_calls),
+                                                                         names):
             # The AI claimed an action no tool performed: say so in code, so the owner is never misled.
             result.spoken.append(say.render("not_done", {}, self.session.language))
         result.ui = self.session.slip()

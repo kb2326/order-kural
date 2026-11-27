@@ -28,10 +28,16 @@ CLAIM = re.compile(r"\b(add|added|adding|save|saved|saving|billed)\b|panren|pann
                    re.IGNORECASE)
 
 
-def unbacked_claim(text: str, tool_called: bool) -> bool:
-    """True when the AI's own words claim an action but no tool ran in that turn (27 Nov live check: it said
-    'girls pant ... add panren' and saved nothing). The caller then says, in code, that nothing was added."""
-    return not tool_called and bool(CLAIM.search(text or ""))
+def unbacked_claim(text: str, tool_called: bool, item_names: tuple[str, ...] = ()) -> bool:
+    """True when the AI's own words claim an action, or read out order items, but no tool ran in that turn
+    (27 Nov: it said 'girls pant ... add panren', and once echoed 'crop top S aaru M aaru', saving nothing).
+    A question ('crop top M size-la ethana?') is not a claim. The caller then says, in code, that nothing was added."""
+    if tool_called or not text:
+        return False
+    if CLAIM.search(text):
+        return True
+    lowered = text.casefold()
+    return "?" not in text and any(name in lowered for name in item_names)
 
 
 def classify(text: str) -> Literal["yes", "no", "other"]:
