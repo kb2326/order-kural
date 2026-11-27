@@ -1,0 +1,177 @@
+import inspect
+
+import pytest
+
+from app.agent import say
+from app.agent.session import TOOL_NAMES, AgentSession
+from app.agent.tools import TOOL_SPECS
+from app.domain.catalog import Catalog
+from app.flow.pieces import PieceService
+from app.flow.shop import ShopService
+from app.store.db import Store
+
+CAT = Catalog.load("data/items.json")
+PALAZZO = [{"name_as_spoken": "plain palazzo", "item_code": "PPL", "sizes": {"S": 6, "M": 6, "L": 6, "XL": 6}}]
+CROP = [{"name_as_spoken": "crop top", "item_code": "CRT", "sizes": {"M": 10, "L": 10}}]
+
+
+@pytest.fixture
+def store():
+    return Store(":memory:")
+
+
+@pytest.fixture
+def agent(store):
+    a = AgentSession(PieceService(store, CAT), ShopService(store, CAT))
+    a.heard("Kerala Fancy-ku 24 plain palazzo", "ta-IN")
+    return a
+
+
+def sari(agent):
+    agent.heard("சரி", "ta-IN")
+    return agent.confirm_pending()
+
+
+def test_add_to_order_stages_and_says_total(agent, store):
+    r = agent.add_to_order("Kerala Fancy", PALAZZO)
+    assert r.wrote and agent.pending.kind == "order"
+    assert "₹1,560" in r.say and "சரி" in r.say
+    assert store.open_orders() == []
+
+
+def test_say_matches_render_for_staged(agent):
+    r = agent.add_to_order("Kerala Fancy", PALAZZO)
+    assert r.say == say.render("staged", r.facts, "ta-IN")
+
+
+def test_second_add_same_customer_merges_into_one_pending(agent, store):
+    first = agent.add_to_order("Kerala Fancy", PALAZZO)
+    r = agent.add_to_order("Kerala Fancy", CROP)
+    assert agent.pending.piece_id != first.facts["piece_id"]
+    assert store.get_piece(first.facts["piece_id"])["state"] == "discarded"
+    assert r.facts["total_paise"] == 24 * 6500 + 20 * 7500
+    sari(agent)
+    [order] = store.open_orders()
+    assert [l.item_code for l in order.lines] == ["PPL", "CRT"]
+
+
+def test_other_customer_while_pending_is_refused(agent):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    r = agent.add_to_order("Sri Murugan", CROP)
+    assert r.say == say.render("other_pending", {"customer": "Kerala Fancy"}, "ta-IN")
+    assert agent.pending.customer == "Kerala Fancy"
+
+
+def test_confirm_requires_yes_words(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    agent.heard("also add ten shorts", "en-IN")
+    r = agent.confirm_pending()
+    assert r.say == say.render("need_yes", {"customer": "Kerala Fancy"}, "en-IN")
+    assert store.open_orders() == [] and agent.pending is not None
+
+
+def test_confirm_with_sari_saves(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    r = sari(agent)
+    assert r.wrote and agent.pending is None
+    assert r.say == say.render("saved", {"customer": "Kerala Fancy", "total_paise": 156000}, "ta-IN")
+    [order] = store.open_orders()
+    assert order.customer_name == "Kerala Fancy" and order.lines[0].sizes == {"S": 6, "M": 6, "L": 6, "XL": 6}
+
+
+def test_confirm_with_nothing_pending(agent):
+    agent.heard("sari", "ta-IN")
+    assert agent.confirm_pending().say == say.render("nothing_pending", {}, "ta-IN")
+
+
+def test_discard_drops_pending(agent, store):
+    r = agent.add_to_order("Kerala Fancy", PALAZZO)
+    agent.discard_pending()
+    assert agent.pending is None and store.get_piece(r.facts["piece_id"])["state"] == "discarded"
+
+
+def test_customer_not_said_asks_not_pending(agent):
+    r = agent.add_to_order("", PALAZZO)
+    assert agent.pending is None and r.say == say.render("ask_customer", {"near": None}, "ta-IN")
+
+
+def test_near_miss_customer_asks(agent):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    r = agent.add_to_order("Kerala Fancies", CROP)
+    assert agent.pending is None and "Kerala Fancy" in r.say
+
+
+def test_bad_item_only_reports_problem_and_keeps_nothing(agent):
+    r = agent.add_to_order("Kerala Fancy", [{"name_as_spoken": "silk saree", "quantity_total": 10}])
+    assert agent.pending is None and "silk saree" in r.say
+
+
+def test_bill_then_sari_issues_bill_and_debit(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    agent.heard("bill it", "ta-IN")
+    r = agent.bill_order("Kerala Fancy")
+    assert agent.pending.kind == "bill" and "₹1,560" in r.say
+    r = sari(agent)
+    assert r.facts["number"] == 1 and store.get_bill(1)["total_paise"] == 156000
+    cid = store.find_customers("Kerala Fancy")[0]["id"]
+    assert agent.shop.balance(cid) == 156000
+
+
+def test_bill_with_no_open_order(agent):
+    r = agent.bill_order("Nobody Tex")
+    assert agent.pending is None and r.say == say.render("no_open_order", {"customer": "Nobody Tex"}, "ta-IN")
+
+
+def test_payment_then_sari_updates_balance(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    agent.bill_order("Kerala Fancy")
+    sari(agent)
+    agent.record_payment("Kerala Fancy", 500, "upi")
+    r = sari(agent)
+    assert r.facts["balance_paise"] == 156000 - 50000
+    assert "₹1,060" in r.say
+
+
+def test_payment_unknown_customer_asks(agent):
+    r = agent.record_payment("Ghost Stores", 500, "upi")
+    assert agent.pending is None and r.say == say.render("ask_customer", {"near": None}, "ta-IN")
+
+
+def test_mark_shipped_then_sari(agent, store):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    agent.mark_shipped("Kerala Fancy", "KPN")
+    sari(agent)
+    assert store.orders_in_states(["shipped"])[0].transport == "KPN"
+
+
+def test_ask_to_ship_speaks_code_answer_and_writes_nothing(agent):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    r = agent.ask_shop("to_ship")
+    assert not r.wrote and r.say == say.render("to_ship", {"orders": [{"customer": "Kerala Fancy"}]}, "ta-IN")
+
+
+def test_ask_unknown_question_cannot_answer(agent):
+    assert agent.ask_shop("weather").say == say.render("cannot_answer", {}, "ta-IN")
+
+
+def test_read_tools_return_facts_and_no_say(agent):
+    agent.add_to_order("Kerala Fancy", PALAZZO)
+    sari(agent)
+    r = agent.get_open_order("Kerala Fancy")
+    assert r.say == "" and r.facts["lines"][0]["item"] == "Plain palazzo"
+    assert agent.find_customer("Kerala Fancy").facts["matches"][0]["name"] == "Kerala Fancy"
+
+
+def test_tool_specs_cover_all_methods():
+    names = {s["function"]["name"] for s in TOOL_SPECS}
+    assert names == set(TOOL_NAMES)
+    for name in TOOL_NAMES:
+        assert callable(getattr(AgentSession, name))
+        params = set(inspect.signature(getattr(AgentSession, name)).parameters) - {"self"}
+        spec = next(s for s in TOOL_SPECS if s["function"]["name"] == name)
+        assert set(spec["function"]["parameters"]["properties"]) == params

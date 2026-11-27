@@ -151,6 +151,20 @@ T: dict[str, dict[str, str]] = {
         "ml-IN": "{item}: കഴിഞ്ഞ {days} ദിവസത്തിൽ {quantity} പീസ് ഓർഡർ വന്നു.",
         "kn-IN": "{item}: ಕಳೆದ {days} ದಿನಗಳಲ್ಲಿ {quantity} ಪೀಸ್ ಆರ್ಡರ್ ಬಂದಿದೆ.",
     },
+    "problems": {
+        "en-IN": "{customer}: {problems_text}. Nothing was added. Please say it again.",
+        "ta-IN": "{customer}: {problems_text}. எதுவும் சேர்க்கல. திரும்ப சொல்லுங்க.",
+        "hi-IN": "{customer}: {problems_text}. कुछ नहीं जोड़ा. फिर से बोलिए.",
+        "ml-IN": "{customer}: {problems_text}. ഒന്നും ചേർത്തില്ല. വീണ്ടും പറയൂ.",
+        "kn-IN": "{customer}: {problems_text}. ಏನೂ ಸೇರಿಸಿಲ್ಲ. ಮತ್ತೆ ಹೇಳಿ.",
+    },
+    "no_open_order": {
+        "en-IN": "There is no open order for {customer}.",
+        "ta-IN": "{customer} க்கு திறந்த ஆர்டர் எதுவும் இல்ல.",
+        "hi-IN": "{customer} का कोई खुला ऑर्डर नहीं है.",
+        "ml-IN": "{customer} ന് തുറന്ന ഓർഡർ ഒന്നുമില്ല.",
+        "kn-IN": "{customer} ಗೆ ತೆರೆದ ಆರ್ಡರ್ ಇಲ್ಲ.",
+    },
     "cannot_answer": {
         "en-IN": "I can answer: what is to ship, a customer's order or balance, and item counts.",
         "ta-IN": "நான் சொல்லக்கூடியது: அனுப்ப வேண்டியது, ஒரு கஸ்டமர் ஆர்டர் அல்லது பாக்கி, ஐட்டம் எண்ணிக்கை.",
@@ -180,6 +194,8 @@ def render(kind: str, facts: dict, language: str) -> str:
         f["balance"] = money(f["balance_paise"])
     if "changes" in f:
         f["changes"] = "; ".join(f["changes"])
+    if kind == "problems":
+        f["problems_text"] = "; ".join(f.get("problems") or [])
     if "problems" in f:
         f["problems"] = (f" {PROBLEM_LABEL[language]}: " + "; ".join(f["problems"]) + ".") if f["problems"] else ""
     if kind == "to_ship":
