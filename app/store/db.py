@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -40,6 +43,27 @@ class Store:
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        # One connection is shared by FastAPI's worker threads, so every access goes through this lock.
+        self.lock = threading.RLock()
+        self._depth = 0
+
+    @contextmanager
+    def tx(self) -> Iterator[None]:
+        """One transaction. Nested calls join the outer one, so a whole confirm commits or rolls back together."""
+        with self.lock:
+            if self._depth:
+                self._depth += 1
+                try:
+                    yield
+                finally:
+                    self._depth -= 1
+                return
+            self._depth = 1
+            try:
+                with self.conn:
+                    yield
+            finally:
+                self._depth = 0
 
     # ---- orders -------------------------------------------------------------------------------------------
     def _load_order(self, row: sqlite3.Row) -> Order:
@@ -56,12 +80,17 @@ class Store:
                   "FROM orders o JOIN customers c ON c.id = o.customer_id")
 
     def open_orders(self) -> list[Order]:
+        with self.lock:
+            return self._open_orders()
+
+    def _open_orders(self) -> list[Order]:
         rows = self.conn.execute(self._ORDER_SQL + " WHERE o.state='open' ORDER BY o.id").fetchall()
         return [self._load_order(r) for r in rows]
 
     def get_order(self, order_id: int) -> Order | None:
-        row = self.conn.execute(self._ORDER_SQL + " WHERE o.id=?", (order_id,)).fetchone()
-        return self._load_order(row) if row else None
+        with self.lock:
+            row = self.conn.execute(self._ORDER_SQL + " WHERE o.id=?", (order_id,)).fetchone()
+            return self._load_order(row) if row else None
 
     def _customer_id(self, name: str, city: str | None) -> int:
         row = self.conn.execute(
@@ -74,7 +103,7 @@ class Store:
         return self.conn.execute("INSERT INTO customers(name, city) VALUES (?, ?)", (name, city)).lastrowid
 
     def save_order(self, order: Order) -> int:
-        with self.conn:
+        with self.tx():
             cid = self._customer_id(order.customer_name, order.city)
             if order.id is None:
                 order_id = self.conn.execute(
@@ -95,33 +124,42 @@ class Store:
 
     # ---- voice pieces -------------------------------------------------------------------------------------
     def add_piece(self, transcript: str, source: Literal["live", "sample"], audio_path: str | None) -> int:
-        with self.conn:
+        with self.tx():
             return self.conn.execute("INSERT INTO voice_pieces(source, transcript, audio_path) VALUES (?, ?, ?)",
                                      (source, transcript, audio_path)).lastrowid
 
     def get_piece(self, piece_id: int) -> dict | None:
-        row = self.conn.execute("SELECT * FROM voice_pieces WHERE id=?", (piece_id,)).fetchone()
-        return dict(row) if row else None
+        with self.lock:
+            row = self.conn.execute("SELECT * FROM voice_pieces WHERE id=?", (piece_id,)).fetchone()
+            return dict(row) if row else None
 
     _PIECE_FIELDS = {"state", "ai_result_json", "proposal_json", "target_order_id", "order_id", "transcript"}
+
+    def claim_piece(self, piece_id: int, from_state: str, to_state: str) -> bool:
+        """Move a piece between states only if it is still in from_state. False means someone else got there first."""
+        with self.tx():
+            cur = self.conn.execute("UPDATE voice_pieces SET state=? WHERE id=? AND state=?",
+                                    (to_state, piece_id, from_state))
+            return cur.rowcount == 1
 
     def update_piece(self, piece_id: int, **fields) -> None:
         bad = set(fields) - self._PIECE_FIELDS
         if bad:
             raise ValueError(f"Unknown piece fields: {sorted(bad)}")
         sets = ", ".join(f"{k}=?" for k in fields)
-        with self.conn:
+        with self.tx():
             self.conn.execute(f"UPDATE voice_pieces SET {sets} WHERE id=?", (*fields.values(), piece_id))
 
     def count_pieces(self, source: str) -> int:
-        return self.conn.execute("SELECT COUNT(*) FROM voice_pieces WHERE source=?", (source,)).fetchone()[0]
+        with self.lock:
+            return self.conn.execute("SELECT COUNT(*) FROM voice_pieces WHERE source=?", (source,)).fetchone()[0]
 
     def add_event(self, order_id: int, piece_id: int, change_json: str) -> None:
-        with self.conn:
+        with self.tx():
             self.conn.execute("INSERT INTO order_events(order_id, piece_id, change_json) VALUES (?, ?, ?)",
                               (order_id, piece_id, change_json))
 
     def reset(self) -> None:
-        with self.conn:
+        with self.tx():
             for table in ("order_events", "order_lines", "orders", "customers", "voice_pieces", "traces"):
                 self.conn.execute(f"DELETE FROM {table}")

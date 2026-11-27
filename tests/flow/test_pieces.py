@@ -112,3 +112,80 @@ def test_readback_piece1_text(svc):
     assert p.readback == ("Kerala Fancy, Palakkad. Added: Print palazzo 24 at ₹68. "
                           "Added: Crop top S 6, M 6, L 6 at ₹75. Order total ₹3,131.10 with GST. "
                           "Still needed: transport, payment. Say sari to confirm.")
+
+
+# ---- final-review fixes ----------------------------------------------------------------------------------------
+import threading
+import time
+
+
+def test_unsupported_intent_cannot_be_confirmed(svc, store):
+    raw = {**P1, "intent": "unclear"}
+    p = run(svc, raw)
+    with pytest.raises(PieceStateError):
+        svc.confirm(p.piece_id)
+    assert store.open_orders() == []
+
+
+def test_piece_with_nothing_to_apply_cannot_be_confirmed(svc, store):
+    raw = {**P1, "changes": [{"op": "add_line", "name_as_spoken": "silk saree", "quantity_total": 5}]}
+    p = run(svc, raw)
+    assert p.problems == ["Unknown item: silk saree"]
+    with pytest.raises(PieceStateError):
+        svc.confirm(p.piece_id)
+    assert store.open_orders() == []
+
+
+def test_confirm_is_atomic(svc, store, monkeypatch):
+    p = run(svc, P1)
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+    monkeypatch.setattr(store, "add_event", boom)
+    with pytest.raises(RuntimeError):
+        svc.confirm(p.piece_id)
+    assert store.open_orders() == []
+    assert store.get_piece(p.piece_id)["state"] == "read_back"
+
+
+def test_concurrent_confirms_apply_once(svc, store, monkeypatch):
+    first = run(svc, P1)
+    svc.confirm(first.piece_id)
+    p = run(svc, P2)
+    real_save = store.save_order
+
+    def slow_save(order):
+        time.sleep(0.2)
+        return real_save(order)
+    monkeypatch.setattr(store, "save_order", slow_save)
+    results = []
+
+    def go():
+        try:
+            svc.confirm(p.piece_id)
+            results.append("ok")
+        except PieceStateError:
+            results.append("409")
+    threads = [threading.Thread(target=go) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(results) == ["409", "ok"]
+    kps = next(l for l in store.open_orders()[0].lines if l.item_code == "KPS")
+    assert kps.quantity == 30
+
+
+def test_same_name_other_city_starts_new_order(svc, store):
+    a = run(svc, {**P1, "customer": {"name_as_spoken": "Ravi Textiles", "city": "Salem"}})
+    svc.confirm(a.piece_id)
+    p = run(svc, {**P1, "customer": {"name_as_spoken": "Ravi Textiles", "city": "Erode"}})
+    assert p.is_new_order is True
+
+
+def test_two_open_orders_same_name_asks_customer(svc, store):
+    for city in ("Salem", "Erode"):
+        a = run(svc, {**P1, "customer": {"name_as_spoken": "Ravi Textiles", "city": city}})
+        svc.confirm(a.piece_id)
+    p = run(svc, {**P3, "customer": {"name_as_spoken": "Ravi Textiles", "match": "existing"}})
+    assert p.ask_customer is True

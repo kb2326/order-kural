@@ -70,6 +70,9 @@ def _add(new: Order, ch: AddLine, catalog: Catalog, diff: list[DiffEntry], probl
         problems.append(f"No quantity for: {ch.name_as_spoken}")
         return
     existing = _find(new, item.code)
+    if existing is not None and bool(existing.sizes) != bool(sizes):
+        problems.append(f"Sizes needed for: {item.name}" if existing.sizes else f"Sizes don't match for: {item.name}")
+        return
     if existing is None:
         rate = ch.rate_spoken * 100 if ch.rate_spoken else item.rate_paise
         line = OrderLine(item_code=item.code, sizes=sizes, quantity=added, rate_paise=rate)
@@ -85,7 +88,7 @@ def _add(new: Order, ch: AddLine, catalog: Catalog, diff: list[DiffEntry], probl
     diff.append(DiffEntry("changed", item.code, None, before, describe(existing)))
 
 
-def _change(new: Order, ch: ChangeLine, diff: list[DiffEntry], problems: list[str]) -> None:
+def _change(new: Order, ch: ChangeLine, catalog: Catalog, diff: list[DiffEntry], problems: list[str]) -> None:
     existing = _find(new, ch.item_code)
     if existing is None:
         problems.append(f"Not in order: {ch.item_code}")
@@ -99,6 +102,10 @@ def _change(new: Order, ch: ChangeLine, diff: list[DiffEntry], problems: list[st
                 existing.sizes[s] = q
         existing.quantity = sum(existing.sizes.values())
     elif ch.quantity_total is not None:
+        if existing.sizes:
+            item = catalog.get(existing.item_code)
+            problems.append(f"Sizes needed for: {item.name if item else existing.item_code}")
+            return
         existing.quantity = ch.quantity_total
     if ch.rate_spoken:
         existing.rate_paise = ch.rate_spoken * 100
@@ -118,7 +125,7 @@ def apply_changes(order: Order, changes: list[Change], catalog: Catalog) -> Appl
         if isinstance(ch, AddLine):
             _add(new, ch, catalog, diff, problems)
         elif isinstance(ch, ChangeLine):
-            _change(new, ch, diff, problems)
+            _change(new, ch, catalog, diff, problems)
         elif isinstance(ch, RemoveLine):
             existing = _find(new, ch.item_code)
             if existing is None:

@@ -128,3 +128,24 @@ def test_apply_is_pure(cat):
     before = copy.deepcopy(o)
     apply_changes(o, PIECE2, cat)
     assert o == before
+
+
+def test_unsized_add_to_sized_line_is_a_problem(cat):
+    o = apply_changes(empty_order(), [add("CRT", "crop top", sizes={"S": 6, "M": 6})], cat).order
+    res = apply_changes(o, [add("CRT", "crop top", qty=6)], cat)
+    assert res.problems == ["Sizes needed for: Crop top"]
+    assert line(res.order, "CRT").quantity == 12
+
+
+def test_sized_add_to_unsized_line_is_a_problem(cat):
+    o = apply_changes(empty_order(), [add("PRP", "print palazzo", qty=24)], cat).order
+    res = apply_changes(o, [add("PRP", "print palazzo", sizes={"S": 10})], cat)
+    assert res.problems == ["Sizes don't match for: Print palazzo"]
+    assert line(res.order, "PRP").quantity == 24
+
+
+def test_total_change_on_sized_line_is_a_problem(cat):
+    o = apply_changes(empty_order(), [add("CRT", "crop top", sizes={"S": 6, "M": 6})], cat).order
+    res = apply_changes(o, [ChangeLine(op="change_line", item_code="CRT", quantity_total=30)], cat)
+    assert res.problems == ["Sizes needed for: Crop top"]
+    assert line(res.order, "CRT").quantity == 12

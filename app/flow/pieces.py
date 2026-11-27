@@ -35,16 +35,21 @@ class Proposal:
     ask_customer: bool
 
 
+def candidates(ref: CustomerRef, open_orders: list[Order]) -> list[Order]:
+    """Open orders this piece could belong to: the id the AI named, else same name in a compatible city."""
+    by_id = [o for o in open_orders if o.id is not None and ref.match == str(o.id)]
+    if by_id:
+        return by_id
+    wanted, city = normalise(ref.name_as_spoken), normalise(ref.city or "")
+    return [o for o in open_orders
+            if normalise(o.customer_name) == wanted
+            and (not city or not o.city or normalise(o.city) == city)]
+
+
 def resolve_target(ref: CustomerRef, open_orders: list[Order]) -> Order | None:
-    """Which open order does this piece belong to? None means start a new order."""
-    for o in open_orders:
-        if o.id is not None and ref.match == str(o.id):
-            return o
-    wanted = normalise(ref.name_as_spoken)
-    for o in open_orders:
-        if normalise(o.customer_name) == wanted:
-            return o
-    return None
+    """Which open order does this piece belong to? None means start a new order (or ask, if several match)."""
+    found = candidates(ref, open_orders)
+    return found[0] if len(found) == 1 else None
 
 
 def _new_order(ref: CustomerRef) -> Order:
@@ -65,9 +70,11 @@ class PieceService:
             problems.append(f"Not supported yet: {result.intent}")
         if ref is None:
             problems.append("Customer not heard")
-        ask_customer = ref is None or ref.confidence == "low"
+        open_orders = self.store.open_orders()
+        found = candidates(ref, open_orders) if ref else []
+        ask_customer = ref is None or ref.confidence == "low" or len(found) > 1
 
-        target = resolve_target(ref, self.store.open_orders()) if ref else None
+        target = found[0] if len(found) == 1 else None
         base = target or (_new_order(ref) if ref else _new_order(CustomerRef(name_as_spoken="?")))
         applied = apply_changes(base, result.changes if not problems else [], self.catalog)
         problems += applied.problems
@@ -75,10 +82,12 @@ class PieceService:
         missing = missing_fields(applied.order)
         readback = ("Which customer is this for?" if ask_customer else
                     build_readback(applied.order, applied.diff, totals, missing, self.catalog, problems))
+        # Only a piece that was understood, names one customer and changes something can be confirmed.
+        confirmable = not ask_customer and result.intent == "order_changes" and bool(applied.diff)
 
         self.store.update_piece(
             piece_id,
-            state="proposed" if ask_customer else "read_back",
+            state="read_back" if confirmable else "proposed",
             ai_result_json=result.model_dump_json(),
             proposal_json=json.dumps({"diff": [asdict(d) for d in applied.diff], "problems": problems}),
             target_order_id=target.id if target else None,
@@ -95,21 +104,27 @@ class PieceService:
         return piece
 
     def confirm(self, piece_id: int) -> Order:
-        piece = self._waiting(piece_id)
-        result = PieceResult.model_validate_json(piece["ai_result_json"])
-        target = self.store.get_order(piece["target_order_id"]) if piece["target_order_id"] else None
-        if target is None or target.state != "open":
-            target = resolve_target(result.customer, self.store.open_orders()) or _new_order(result.customer)
-        applied = apply_changes(target, result.changes, self.catalog)
-        touched = {d.item_code for d in applied.diff if d.kind in ("added", "changed")}
-        for line in applied.order.lines:
-            if line.item_code in touched:
-                line.source_piece_id = piece_id
-        order_id = self.store.save_order(applied.order)
-        self.store.add_event(order_id, piece_id, json.dumps([asdict(d) for d in applied.diff]))
-        self.store.update_piece(piece_id, state="applied", order_id=order_id)
-        return self.store.get_order(order_id)
+        # One transaction under the store lock: a double tap or a crash half-way can never apply a piece twice.
+        with self.store.tx():
+            piece = self._waiting(piece_id)
+            if not self.store.claim_piece(piece_id, "read_back", "applied"):
+                raise PieceStateError(f"Piece {piece_id} was already handled")
+            result = PieceResult.model_validate_json(piece["ai_result_json"])
+            target = self.store.get_order(piece["target_order_id"]) if piece["target_order_id"] else None
+            if target is None or target.state != "open":
+                target = resolve_target(result.customer, self.store.open_orders()) or _new_order(result.customer)
+            applied = apply_changes(target, result.changes, self.catalog)
+            touched = {d.item_code for d in applied.diff if d.kind in ("added", "changed")}
+            for line in applied.order.lines:
+                if line.item_code in touched:
+                    line.source_piece_id = piece_id
+            order_id = self.store.save_order(applied.order)
+            self.store.add_event(order_id, piece_id, json.dumps([asdict(d) for d in applied.diff]))
+            self.store.update_piece(piece_id, order_id=order_id)
+            return self.store.get_order(order_id)
 
     def discard(self, piece_id: int) -> None:
-        self._waiting(piece_id)
-        self.store.update_piece(piece_id, state="discarded")
+        with self.store.tx():
+            self._waiting(piece_id)
+            if not self.store.claim_piece(piece_id, "read_back", "discarded"):
+                raise PieceStateError(f"Piece {piece_id} was already handled")
