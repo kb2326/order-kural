@@ -1,134 +1,135 @@
-# S2-S4: Live Voice, AI Understanding, Eval and Spoken Read-back Implementation Plan
+# S2-S6: Voice Agent, Bill, Khata and Ask Implementation Plan (revised 27 Nov evening)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** One real voice note (uploaded or held-to-talk) becomes a correct, read-back, voice-confirmed change to the
-right customer's order, with every AI step validated, timed, costed and measured on an eval set; and nothing the
-README claims is untrue.
+**Goal:** the owner talks to Order Kural in Tamil, Hindi, Malayalam or Kannada, or uploads a buyer's voice note, or
+types. A bounded voice agent then:
+- builds the customer's order from pieces;
+- reads it back in the owner's language;
+- saves only after "sari";
+- turns "bill it" into a numbered bill, a packing list and a khata debit;
+- records payments;
+- answers three spoken questions about the shop.
 
-**Architecture:** Providers (Sarvam STT, Sarvam chat extractor, Sarvam TTS) sit behind small protocols in
-`app/providers/`; a fixture extractor keeps the no-key sample working. A `LivePieceService` path runs
-audio → transcript → validated change list → existing `PieceService.propose`, recording one trace span per step.
-Guardrails added in code catch the AI failure modes found in the 27 Nov probe. The eval runner scores conversations
-through the same path.
+Every step is grounded in code, timed, costed and measured.
 
-**Tech Stack:** as S0-S1, plus `httpx==0.28.1` as a runtime dependency (Sarvam calls), `python-multipart==0.0.20`
-(FastAPI uploads), ffmpeg (Docker image; `imageio-ffmpeg==0.6.0` in requirements-dev for local runs).
+**Architecture:**
+- **Pure domain code** in `app/domain/` covers order, bill and khata.
+- **Shop services** in `app/flow/` handle staging and confirm, bill, payment, ship and ask.
+- **`AgentSession`** in `app/agent/` exposes these as about 10 tools. Each tool returns `facts` and a code-built `say`
+  sentence.
+- **Two brains drive the same `AgentSession`:**
+  - a **text loop**, calling Sarvam chat with tools, for typed input, uploaded notes and the eval;
+  - a **Pipecat live voice pipeline** (Sarvam realtime STT → sarvam-105b with tools → Bulbul TTS), mounted on a
+    FastAPI WebSocket.
+- **After a write tool, the code's `say` is spoken directly** (`run_llm=False` plus `TTSSpeakFrame`), so the agent
+  can't describe changes that didn't happen.
 
-**Spec:** `docs/round2/04-rfc.md` (§4.1-4.6, §6, §8, §9, §12 S2-S4), `docs/round2/03-prd.md` (R1-R3, R5-R7, R14,
-guardrails §8, metrics §7). Evidence: `docs/round2/01-discovery.md` §6d and the probe findings below. Review that
-drove the order of tasks: the project evaluation of 27 Nov (summarised in the "Probe and review findings" section).
+**Tech Stack:** as S0-S1, plus:
+- `httpx==0.28.1` (runtime);
+- `python-multipart==0.0.20`;
+- `pipecat-ai[websocket,sarvam]==1.17.0`;
+- ffmpeg (Docker image; `imageio-ffmpeg==0.6.0` in requirements-dev).
 
-## Probe and review findings this plan must answer (27 Nov)
+**Spec:** `docs/superpowers/specs/2026-11-27-order-book-that-listens-design.md`, the binding authority, especially
+§2, §5, §5b and §7. Background: `docs/round2/04-rfc.md`, `docs/round2/03-prd.md`, `docs/round2/01-discovery.md`
+§6c-6e. Spike code (throwaway, git-ignored, read-only reference): `spikes/pipecat/bot.py`, `index.html` and
+`talk_test.py`.
 
-Real `sarvam-105b` call on the real Hindi customer note (2.95 s, 960 tokens, schema followed):
-1. Invented customer "Sir" from the greeting: the note never names the shop.
-2. Mapped "women's pant" to `GPT` (Girls pant): a wrong item applied silently.
-3. Put age bands ("1 से 10 साल") into `name_as_spoken` with `quantity_total`, instead of `sizes`.
-4. Put "Girnar Transport" and the bank payment into `uncertain` instead of `set_field`.
+## Findings this plan must answer
 
-Review: no voice in the running app; README and RFC over-claim; no eval; near-miss customer names start a silent new
-order; no failure state; sample reset wipes shared data on a live link; no latency or cost numbers.
+**Probe (27 Nov), sarvam-105b on the real Hindi note:**
+1. It invented the customer "Sir".
+2. It mapped "women's pant" to GPT.
+3. It put age bands in the name.
+4. It left transport and payment in `uncertain`.
+
+Findings 1 and 2 are fixed in Tasks 1-2. Findings 3 and 4 go into the agent prompt examples and the eval.
+
+**Spike (27 Nov):**
+- **Worked:**
+  - first reply 0.35-0.9 s after the end of speech;
+  - Pipecat ran inside FastAPI;
+  - a correct `add_to_order` from Tamil;
+  - `confirm_order` on "சரி".
+- **Failed:**
+  - it once *said* "added, credit, ₹1,560" without calling any tool;
+  - STT garbled "crop top M pathu" into "Groptop May 10";
+  - customer names absorbed numbers ("Kerala Fancyku Irupati Nalu") until the prompt forbade it.
 
 ## Global Constraints
 
-- Everything from the S0-S1 plan still holds (no-key start, banner text, paise, GST, "nothing changes without
-  confirm", port 8000, `ORDER_KURAL_DB`).
-- Keys are read at call time from env `SARVAM_API_KEY`; with no key, live endpoints return HTTP 503
-  `{"detail": "Sarvam API key not set"}` and the sample still works.
-- Sarvam endpoints (verified 27 Nov): STT `POST https://api.sarvam.ai/speech-to-text` (multipart `file`, `model=saaras:v4`,
-  `mode=codemix`, `language_code=unknown`; response `transcript`, `language_code`); chat
-  `POST https://api.sarvam.ai/v1/chat/completions` (`model=sarvam-105b`, `reasoning_effort=null`, `temperature=0.2`,
-  `response_format={"type":"json_schema","json_schema":{"name":"PieceResult","schema":<PieceResult schema>,"strict":true}}`);
-  TTS `POST https://api.sarvam.ai/text-to-speech` (`text`, `target_language_code`, `model=bulbul:v3`; response
-  `audios[0]` base64 WAV). Header `api-subscription-key`. Timeouts: STT 60 s, chat 45 s, TTS 30 s.
-- STT takes at most 30 s per request: split audio into chunks of at most 28 s, cutting at silences (ADR-004).
-- Cost estimates (RFC §6 list prices; label them "estimated"): STT ₹0.49 per minute of audio; chat ₹10 per 1M
-  input tokens and ₹25 per 1M output tokens; TTS ₹2.5 per 1,000 characters. Store in paise, rounded up.
-- Audio saved to `data/runtime/audio/<piece_id>.<ext>`; never committed. Sample audio lives in `app/sample/audio/`
-  and is committed (synthetic voice, labelled).
-- Read-back languages: `ta-IN`, `hi-IN`, `en-IN`; templates are code, never AI-written.
-- Confirm words (RFC §4.5): yes = sari, seri, saari, aamaa, aama, haan, ha, theek hai, ok, okay, confirm, சரி, ஆமா,
-  हाँ, हां, ठीक है; no = vendaam, vendam, venda, cancel, nahi, nahin, no, வேண்டாம், नहीं.
-- Live-link cost guard: at most 30 live pieces per client IP per hour and 300 per day overall; then HTTP 429.
+- Everything from S0-S1 still holds:
+  - no-key start and banner text;
+  - money in paise;
+  - "nothing changes without confirm";
+  - port 8000;
+  - `ORDER_KURAL_DB`.
+- **No tax maths anywhere the user sees.**
+  - The bill and slip show quantity × rate = amount, the total and HSN codes.
+  - The bill title is `Order bill (estimate)` with the footer `Tax as per final invoice`.
+  - `compute_totals` GST fields stay in code and tests but are never rendered.
+- **Keys and no-key behaviour:**
+  - Keys are read at call time from `SARVAM_API_KEY`.
+  - With no key:
+    - HTTP endpoints that need Sarvam return 503 `{"detail": "Sarvam API key not set"}`;
+    - `/api/voice` accepts the socket and then closes it with code 4003, reason `Sarvam API key not set`;
+    - the sample still works.
+- **Sarvam endpoints and settings:**
+  - **Batch STT:** `POST https://api.sarvam.ai/speech-to-text` (multipart `file`, `model=saaras:v4`, `mode=codemix`,
+    `language_code=unknown`).
+  - **Chat:** `POST https://api.sarvam.ai/v1/chat/completions` (`model=sarvam-105b`, `temperature=0.2`, `tools`,
+    `tool_choice="auto"`).
+  - **TTS:** `POST https://api.sarvam.ai/text-to-speech` (`model=bulbul:v3`, `speaker=priya`,
+    `speech_sample_rate=16000`).
+  - **Live:** `SarvamRealtimeSTTService(endpointing="vad", model saaras:v4, mode codemix)`;
+    `SarvamLLMService(model="sarvam-105b", reasoning_effort="none", temperature=0.2)`;
+    `SarvamTTSService(model="bulbul:v3", voice="priya", sample_rate=16000)`.
+  - The header is always `api-subscription-key`.
+  - Timeouts: STT 60 s, chat 45 s, TTS 30 s.
+- Batch STT takes at most 30 s per request, so split into chunks of at most 28 s, cutting at silences (ADR-004).
+- **Cost estimates** (label them "estimated"; store paise, rounded up):
+  - STT ₹0.49 per minute;
+  - chat ₹10 per 1M input tokens and ₹25 per 1M output tokens;
+  - TTS ₹2.5 per 1,000 characters.
+- **Languages:**
+  - Spoken and read-back languages are `ta-IN`, `hi-IN`, `ml-IN`, `kn-IN` and `en-IN`.
+  - Read-back sentences are code templates, never AI-written.
+  - Malayalam and Kannada templates are marked "check with a native speaker" in `app/agent/say.py`.
+- **Confirm words** (`classify`): `confirm_pending` only acts when the user's last utterance classifies as `yes`.
+  - **yes:** sari, seri, saari, aamaa, aama, haan, ha, theek hai, ok, okay, confirm, correct, howdu, houdu, sheri, athe,
+    சரி, ஆமா, हाँ, हां, ठीक है, ശരി, ಹೌದು, ಸರಿ.
+  - **no:** vendaam, vendam, venda, cancel, nahi, nahin, no, beda, venda, വേണ്ട, ಬೇಡ, வேண்டாம், नहीं.
+- **Live-link cost guard:**
+  - at most 30 text or upload turns per IP per hour, and 300 per day overall;
+  - at most 6 voice sessions per IP per hour;
+  - each voice session ends after 10 minutes;
+  - beyond these, HTTP 429 or a WebSocket close with code 4029.
+- Audio is saved to `data/runtime/audio/` and never committed. Sample audio lives in `app/sample/audio/`
+  (synthetic, labelled) and is committed.
 
 ## Review Focus
 
-1. **A forwarded customer note that never names the shop** must leave the piece asking "Which customer is this for?",
-   never inventing a customer (probe finding 1).
-2. **An AI item code that contradicts the spoken name** ("women's pant" → GPT) must be reported as a problem and the
-   line not added (probe finding 2).
-3. **Audio that is silent, under 0.5 s, over 5 minutes, or not decodable** must return a clear HTTP 422 message, never
-   a 500 or a stuck piece.
-4. **A provider timeout, 5xx or invalid JSON twice** must end in the "Couldn't understand, please say it again" state
-   with the piece in state `failed`, and the trace shows the error.
-5. **A spoken reply that is neither yes nor no** ("also add ten shorts") must not confirm the pending piece; it is
-   treated as a new piece.
+1. **The agent claims a change that no tool made.** After any write tool, the spoken text equals the tool's `say`
+   (test in Task 9 and the voice adapter in Task 11). The eval counts free-text claims (Task 15).
+2. **"Sari" said with nothing pending, or the LLM calling `confirm_pending` after "also add 10 shorts".** Nothing is
+   saved, and the say is "Nothing is waiting for sari" or "Say sari to save" (Task 9).
+3. **A second customer's order starts while the first is still waiting for sari.** The first stays pending; the agent
+   says "First say sari or cancel for Kerala Fancy" (Task 9).
+4. **Billing an order with zero lines, billing twice, or a payment larger than the balance.**
+   - Zero lines: "Nothing to bill for X".
+   - Billing twice: the second "bill it" bills the new open order or says "No open order".
+   - Overpayment: allowed, and the balance shows as an advance (negative) (Tasks 5-6).
+5. **The voice socket dropping mid-pending** (closed tab, network). The staged piece stays `read_back` in the DB, is
+   not applied, and shows as "waiting" in the UI on the next visit (Task 11).
 
 ---
 
-### Task 1: Honesty fixes (README, RFC, contract)
+### Tasks 1-3: done (see the ledger)
 
-**Files:**
-- Modify: `README.md`, `docs/round2/04-rfc.md` (§4.8 wording), `app/domain/changes.py`, `app/flow/pieces.py`,
-  `app/sample/conversation.json`, `tests/domain/test_changes.py`, `tests/flow/test_pieces.py`
-
-**Interfaces:**
-- Produces: `CustomerRef(name_as_spoken: str | None = None, city: str | None = None,
-  match: Literal["new", "existing"] = "new", order_id: int | None = None, confidence: Literal["high","low"] = "high")`.
-  `candidates()` uses `order_id` when given, else the name rules. A `CustomerRef` with no `name_as_spoken` and no
-  `order_id` means "customer not said".
-
-- [ ] **Step 1: Failing tests:** `test_customer_match_rejects_free_text` (`match="existing-ish"` raises);
-  `test_order_id_routes_directly` (propose with `order_id` of an open order targets it even if the name differs);
-  `test_customer_not_said_asks` (customer `{"match": "new"}` with no name → `ask_customer is True`, piece state `proposed`).
-- [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** the contract change; update fixtures (`"match": "existing"`).
-- [ ] **Step 4: README:** add a "What works today / Planned" table: built = no-key start, order engine, confirm,
-  sample; planned (with slice) = live voice S2, AI S3, spoken read-back S4, bill and khata S5. Change the sequence
-  diagram title to "How an order is built (target design; live voice in progress)". Remove "each line can be traced to
-  the voice note it came from" until Task 6 stores audio. RFC §4.8: "three sample pieces with saved AI results; audio
-  is synthetic (Task 9)".
-- [ ] **Step 5: Run** `python -m pytest -q` → PASS. **Commit** `fix: honest README and explicit customer match contract`.
-
-### Task 2: Guardrails for the probe failures (customer near-miss, item mismatch)
-
-**Files:**
-- Modify: `app/flow/pieces.py`, `app/domain/order.py`, `app/domain/catalog.py`
-- Test: `tests/flow/test_pieces.py`, `tests/domain/test_order_engine.py`
-
-**Interfaces:**
-- Produces: `catalog.Catalog.closest(spoken: str, n: int = 3) -> list[Item]` (difflib, cutoff 0.5);
-  `pieces.near_matches(ref: CustomerRef, open_orders: list[Order]) -> list[Order]` (difflib ratio ≥ 0.75 on normalised
-  names, excluding exact matches).
-- Behaviour: a near match and no exact match → `ask_customer=True` and read-back "Is this for Kerala Fancy, or a new
-  customer?"; `add_line` whose `item_code` is in the catalogue but `catalog.match(name_as_spoken)` returns a
-  different item → problem `"Item code GPT does not match 'women's pant'"`, line not added; unknown item problem
-  becomes `"Unknown item: silk saree. Closest: …"` (up to 3 names).
-
-- [ ] **Step 1: Failing tests:** `test_near_miss_customer_asks` ("Kerala Fancies" vs open "Kerala Fancy");
-  `test_item_code_contradicting_name_is_problem`; `test_unknown_item_offers_closest`;
-  `test_matching_code_and_name_still_added` (GPT + "girls pant").
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** Note: `match(name)` returning None is not a contradiction (keep
-  the code); only a different item is.
-- [ ] **Step 4: Run** full suite → PASS. **Commit** `feat: guardrails for near-miss customers and contradicting item codes`.
-
-### Task 3: Isolated sample sessions
-
-**Files:**
-- Modify: `app/api.py`, `app/main.py`, `app/static/app.js`
-- Test: `tests/test_sample_api.py`
-
-**Interfaces:**
-- Produces: sample endpoints take header `X-Sample-Session: <uuid>` (the page creates one per tab); each session gets
-  its own `PieceService` on an in-memory store (`Store(":memory:")`), kept in an LRU of 200 sessions. Sample never
-  touches the live database. `GET /api/orders` takes optional `X-Sample-Session` to list that session's orders.
-
-- [ ] **Step 1: Failing tests:** `test_two_sample_sessions_are_independent` (session A finishes; session B's
-  `next` returns index 1); `test_sample_reset_does_not_touch_live_orders` (save a live order, reset a sample session,
-  live order still listed without the header).
-- [ ] **Step 2-4:** run → FAIL; implement; full suite → PASS.
-- [ ] **Step 5: Commit** `fix: sample runs in its own session store`.
+1. Honesty fixes and the `CustomerRef` contract.
+2. Guardrails: near-miss customers, contradicting item codes, closest-item hints.
+3. Isolated per-tab sample sessions (`X-Sample-Session`).
 
 ### Task 4: Provider protocols, tracing and cost
 
@@ -139,185 +140,567 @@ order; no failure state; sample reset wipes shared data on a live link; no laten
 - Test: `tests/test_trace.py`
 
 **Interfaces:**
-- Produces: `Transcript(text: str, language: str, seconds_audio: float)`;
-  `class SpeechToText(Protocol): def transcribe(self, wav_path: Path) -> Transcript`;
-  `class Extractor(Protocol): def extract(self, transcript: str, open_orders: list[Order], catalog: Catalog) -> ExtractResult`
-  with `ExtractResult(result: PieceResult, input_tokens: int, output_tokens: int, attempts: int)`;
-  `class TextToSpeech(Protocol): def speak(self, text: str, language: str) -> bytes` (WAV);
-  `ProviderError(Exception)` (message safe to show); `costs.stt_paise(seconds: float) -> int`,
-  `costs.chat_paise(inp: int, out: int) -> int`, `costs.tts_paise(chars: int) -> int` (all round up);
-  `trace.span(store: Store, piece_id: int | None, name: str, provider: str)` context manager yielding a dict where the
-  caller may set `cost_paise` and `meta`; records ms, ok, error text on exception (re-raises);
-  `Store.traces_for(piece_id: int) -> list[dict]`.
+- Produces:
+  - `Transcript(text: str, language: str, seconds_audio: float)`;
+  - `class SpeechToText(Protocol): def transcribe(self, wav_path: Path) -> Transcript`;
+  - `class TextToSpeech(Protocol): def speak(self, text: str, language: str) -> bytes` (WAV);
+  - `ProviderError(Exception)`, whose message is safe to show;
+  - `costs.stt_paise(seconds: float) -> int`, `costs.chat_paise(inp: int, out: int) -> int`,
+    `costs.tts_paise(chars: int) -> int`, all rounding up;
+  - `trace.span(store, piece_id: int | None, name: str, provider: str)`, a context manager:
+    - it yields a dict where the caller may set `cost_paise` and `meta`;
+    - it records ms, ok and the error text on exception, then re-raises;
+  - `Store.traces_for(piece_id: int) -> list[dict]` and `Store.recent_traces(limit: int = 50) -> list[dict]`.
 
-- [ ] **Step 1: Failing tests:** `test_span_records_time_and_cost`; `test_span_records_error_and_reraises`;
-  `test_costs_round_up` (`stt_paise(60) == 49`, `chat_paise(429, 531) == 2`, `tts_paise(1000) == 250`).
-- [ ] **Step 2-4:** FAIL → implement → PASS. **Step 5: Commit** `feat: provider protocols, traces and cost estimates`.
+- [ ] **Step 1: Failing tests:**
+  - `test_span_records_time_and_cost`;
+  - `test_span_records_error_and_reraises`;
+  - `test_costs_round_up`: `stt_paise(60) == 49`, `chat_paise(429, 531) == 2`, `tts_paise(1000) == 250`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** `feat: provider protocols, traces and cost estimates`.
 
-### Task 5: Audio preparation and Sarvam speech-to-text
+### Task 5: Bill and packing list (no tax maths)
+
+**Files:**
+- Create: `app/domain/bill.py`, `app/flow/shop.py`, `tests/domain/test_bill.py`, `tests/flow/test_shop.py`
+- Modify: `app/store/db.py`, which gains:
+  - table `bills(id, number UNIQUE, order_id, customer_id, total_paise, lines_json, created_at, voided INTEGER DEFAULT 0)`;
+  - `Store.next_bill_number() -> int`, `Store.save_bill(...) -> int`, `Store.get_bill(number) -> dict | None`;
+  - `Store.set_order_state(order_id, state)`;
+  - `Store.orders_in_states(states: list[str]) -> list[Order]`.
+
+**Interfaces:**
+- Produces:
+  - `BillLine(item_code, name, hsn, qty_text, quantity, rate_paise, amount_paise)`;
+  - `Bill(number: int, order_id: int, customer_name: str, city, transport, payment, lines: list[BillLine],
+    total_paise: int, created_at: str)`;
+  - `bill.make_bill(order: Order, catalog: Catalog, number: int, created_at: str) -> Bill`, where amount = quantity ×
+    rate;
+  - `bill.packing_list(order: Order, catalog: Catalog) -> list[tuple[str, str, int]]`, giving (item name, size or "-",
+    qty) with one row per size;
+  - `bill.share_text(bill: Bill) -> str`: plain text with the title `Order bill (estimate) No. {n}`, one line per item,
+    `Total ₹…` and `Tax as per final invoice`;
+  - `ShopService(store, catalog)` with `issue_bill(order_id: int) -> Bill`. In one `store.tx()`, it:
+    - checks there is at least one line (else `ShopError("Nothing to bill for {customer}")`);
+    - takes the next number;
+    - saves the bill;
+    - sets the order state to `billed`;
+    - adds the khata debit, but only once Task 6 exists. Until then this is a seam:
+      `self._on_billed(bill)`, a no-op.
+
+- [ ] **Step 1: Failing tests:**
+  - `test_bill_amounts_no_gst`: a sample order gives a total of 24×6500 + 20×7500 paise, and there are no `gst`
+    fields on `Bill`;
+  - `test_packing_list_one_row_per_size`;
+  - `test_share_text_has_estimate_title_and_footer`;
+  - `test_issue_bill_numbers_increase_and_lock_order`: the order state becomes `billed` and is no longer in
+    `open_orders()`;
+  - `test_issue_bill_empty_order_raises`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS (full suite).
+- [ ] **Step 5: Commit** `feat: numbered order bill and packing list (no tax maths)`.
+
+### Task 6: Khata ledger, payments, shipping and undo
+
+**Files:**
+- Create: `app/domain/khata.py`, `tests/domain/test_khata.py`
+- Modify:
+  - `app/store/db.py`: table
+    `ledger_entries(id, customer_id, kind TEXT CHECK(kind IN ('bill','payment','reversal')), amount_paise INTEGER, ref_bill INTEGER, mode TEXT, reverses INTEGER, created_at)`;
+    plus `add_ledger(...) -> int`, `ledger_for(customer_id) -> list[dict]` and `last_ledger(customer_id) -> dict | None`;
+  - `app/flow/shop.py`;
+  - `tests/flow/test_shop.py`.
+
+**Interfaces:**
+- Produces:
+  - `khata.balance(entries: list[dict]) -> int`: positive means the buyer owes;
+    - a bill adds its amount;
+    - a payment subtracts its amount;
+    - a reversal negates the entry it reverses.
+  - `ShopService.record_payment(customer_id: int, amount_paise: int, mode: Payment) -> int` (new balance);
+  - `ShopService.mark_shipped(order_id: int, transport: str | None) -> None`: the state becomes `shipped`, and
+    transport is set if given;
+  - `ShopService.undo_last(customer_id: int) -> str`, which reverses the latest bill or payment that isn't already
+    reversed:
+    - for a bill, it also sets the bill to `voided=1` and the order back to `open`;
+    - it returns a description such as "Bill 3 undone";
+    - this is tap-only, with no voice tool.
+  - `ShopService.balance(customer_id) -> int`.
+  - `issue_bill` now adds the `bill` entry.
+
+- [ ] **Step 1: Failing tests:**
+  - `test_balance_bill_minus_payment`;
+  - `test_overpayment_gives_negative_balance`;
+  - `test_undo_payment_restores_balance`;
+  - `test_undo_bill_voids_and_reopens_order`;
+  - `test_undo_twice_reverses_previous_entry_not_the_reversal`;
+  - `test_mark_shipped_sets_state_and_transport`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** `feat: in-app khata with payments, undo by reversal, and shipping`.
+
+### Task 7: Ask the shop (three questions, answered by code)
+
+**Files:**
+- Create: `app/flow/ask.py`, `tests/flow/test_ask.py`
+
+**Interfaces:**
+- Produces:
+  - `Answer(kind: str, facts: dict)`;
+  - `ask.to_ship(store, catalog) -> Answer`: orders in state `open` or `billed`; facts `{"orders":
+    [{"customer", "bill_number" | None, "lines": n, "total_paise"}]}`;
+  - `ask.customer_summary(store, catalog, order: Order | None, customer_id: int) -> Answer`: facts are the open order
+    lines and the khata balance;
+  - `ask.item_count(store, catalog, item_code: str, now: datetime, days: int = 7) -> Answer`: the sum of quantities in
+    lines of orders created in the last `days`, in any state except `cancelled`.
+
+- [ ] **Step 1: Failing tests:**
+  - `test_to_ship_lists_open_and_billed_not_shipped`;
+  - `test_customer_summary_has_balance`;
+  - `test_item_count_last_7_days_only`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** `feat: ask the shop: to ship, customer summary, item counts`.
+
+### Task 8: Spoken sentences in five languages, and yes/no words
+
+**Files:**
+- Create: `app/agent/__init__.py`, `app/agent/say.py`, `app/agent/words.py`, `tests/agent/__init__.py`,
+  `tests/agent/test_say.py`, `tests/agent/test_words.py`
+
+**Interfaces:**
+- Produces:
+  - `words.classify(text: str) -> Literal["yes", "no", "other"]`:
+    - it uses the Global Constraints lists on casefolded text with punctuation removed;
+    - it matches whole words or phrases ("ok" in "book" is not yes);
+    - when yes and no words both appear, the answer is `other`;
+    - when a yes word sits alongside order words, it's still `yes` only if the text has at most 3 words.
+  - `say.lang(code: str | None) -> str`: maps any STT code to one of `ta-IN`, `hi-IN`, `ml-IN`, `kn-IN` or `en-IN`
+    (default `ta-IN`).
+  - `say.render(kind: str, facts: dict, language: str) -> str` for these kinds:
+    - `staged` (customer, changes, order total, problems, "say sari to save");
+    - `saved`;
+    - `discarded`;
+    - `nothing_pending`;
+    - `need_yes`;
+    - `other_pending` (customer);
+    - `ask_customer` (question);
+    - `bill_staged` (number preview, total);
+    - `bill_saved`;
+    - `payment_staged`;
+    - `payment_saved` (balance);
+    - `shipped_staged`;
+    - `to_ship`;
+    - `customer_summary`;
+    - `item_count`;
+    - `cannot_answer`.
+
+    Money is formatted as `₹26,552` (Indian grouping, no paise when they're zero). Numbers are digits in all
+    languages.
+
+- [ ] **Step 1: Failing tests:**
+  - `test_classify_yes_tamil` ("சரி");
+  - `test_classify_howdu_kannada`;
+  - `test_classify_no_vendaam`;
+  - `test_classify_book_is_not_ok`;
+  - `test_classify_also_add_ten_shorts_is_other`;
+  - `test_render_staged_tamil_has_total_and_sari`;
+  - `test_render_every_kind_every_language_nonempty`, a parametrised loop over all kinds × 5 languages;
+  - `test_money_format_indian_grouping` (`2655200` paise → `₹26,552`).
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Commit** `feat: code-built spoken sentences in five languages and yes/no words`.
+
+### Task 9: AgentSession: the tools, staging and the confirm guard
+
+**Files:**
+- Create: `app/agent/session.py`, `app/agent/tools.py`, `tests/agent/test_session.py`
+
+**Interfaces:**
+- Consumes:
+  - `PieceService.propose/confirm/discard`;
+  - `ShopService` (Tasks 5-6);
+  - `ask` (Task 7);
+  - `say`, `words` (Task 8);
+  - `resolve_target`, `near_matches`.
+- Produces:
+  - `ToolResult(facts: dict, say: str, ui: dict, wrote: bool)`, where `ui` is the slip state for the page.
+  - `AgentSession(pieces: PieceService, shop: ShopService, source: str = "live")`, holding:
+    - `pending: Pending | None`, where `Pending(kind: "order" | "bill" | "payment" | "ship", piece_id | None,
+      customer: str, args: dict)`;
+    - `language: str`;
+    - `last_user_text: str`.
+  - Tool methods, all returning `ToolResult`:
+    - `find_customer(name, city=None)`;
+    - `get_open_order(customer)`;
+    - `add_to_order(customer, items, city=None)`;
+    - `change_line(customer, item_code, sizes=None, quantity_total=None)`;
+    - `remove_line(customer, item_code)`;
+    - `set_detail(customer, field, value)`;
+    - `bill_order(customer)`;
+    - `record_payment(customer, amount_rupees, mode)`;
+    - `mark_shipped(customer, transport=None)`;
+    - `ask_shop(question: "to_ship" | "customer" | "item_count", customer=None, item=None)`;
+    - `confirm_pending()`;
+    - `discard_pending()`.
+  - `AgentSession.heard(text: str, language: str | None)`, called by both brains before each LLM turn.
+  - `tools.TOOL_SPECS: list[dict]`, OpenAI-style function JSON for all 12 tools, with descriptions saying when to use
+    each.
+- **Staging rules:**
+  - **Order changes:**
+    - The order-change tools build a `PieceResult(intent="order_changes", customer=CustomerRef(...), changes=[...])`.
+    - If `pending` is an order for the **same** customer, the new piece contains the old changes plus the new ones:
+      the old piece is discarded and the combined one proposed, so there is one pending piece per "sari".
+    - If `pending` belongs to a **different** customer or kind, nothing is staged and the say is `other_pending`.
+    - If `ask_customer` is true, nothing is pending and the say is `ask_customer` with the readback question.
+  - **Bill, payment and ship** stage a `Pending` without touching the DB until confirmed. Payment and ship resolve the
+    customer through `customers` by normalised name. If the customer is unknown, the say is `ask_customer`.
+  - **`confirm_pending`:**
+    - with no pending, the say is `nothing_pending`;
+    - if `words.classify(last_user_text) != "yes"`, the say is `need_yes` and nothing changes;
+    - otherwise it runs `PieceService.confirm` or the `ShopService` call, clears `pending`, and the say is `saved`,
+      `bill_saved` or `payment_saved` (with balance).
+  - `wrote=True` only for tools that staged or saved.
+
+- [ ] **Step 1: Failing tests** (real in-memory `Store`, real catalogue; no network):
+  - `test_add_to_order_stages_and_says_total`;
+  - `test_second_add_same_customer_merges_into_one_pending`;
+  - `test_other_customer_while_pending_is_refused`;
+  - `test_confirm_requires_yes_words` (`heard("also add ten shorts")` then `confirm_pending()` → `need_yes`; DB
+    unchanged);
+  - `test_confirm_with_sari_saves`;
+  - `test_confirm_with_nothing_pending`;
+  - `test_bill_then_sari_issues_bill_and_debit`;
+  - `test_payment_then_sari_updates_balance`;
+  - `test_customer_not_said_asks_not_pending`;
+  - `test_say_matches_render_for_staged` (the `say` equals `say.render("staged", facts, lang)`);
+  - `test_tool_specs_cover_all_methods`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS (full suite).
+- [ ] **Step 5: Commit** `feat: agent session with grounded tools, staging and a yes-word confirm guard`.
+
+### Task 10: The text brain (Sarvam chat with tools), typing, and the prompt
+
+**Files:**
+- Create: `app/agent/prompt.py`, `app/agent/text_loop.py`, `tests/agent/test_prompt.py`,
+  `tests/agent/test_text_loop.py`, `tests/test_agent_api.py`
+- Modify: `app/api.py` (`POST /api/agent/text`), `app/main.py` (one `AgentSession` per browser `X-Agent-Session`
+  header, in an LRU of 200 that shares the live `Store`), `requirements.txt` (`httpx==0.28.1`)
+
+**Interfaces:**
+- Produces:
+  - `prompt.system_prompt(catalog: Catalog, open_orders: list[Order]) -> str`, containing:
+    - the role, "reply in the owner's language, one or two short sentences";
+    - the spike rules (Tamil number words; sizes, never in the name; the customer is the shop name only; transport is
+      a carrier; payment is cash/upi/credit/bank);
+    - "never say you added, saved or billed anything: the tools speak for themselves";
+    - "if unsure, ask one short question";
+    - the item list;
+    - open orders as `#id customer, city`;
+    - four worked examples taken from the probe: age bands into sizes; Girnar Transport and bank payment; no shop name
+      means ask; an unknown item keeps its name with no code.
+  - `TextBrain(session: AgentSession, api_key: str, client: httpx.Client | None = None)` with
+    `turn(user_text: str, language: str | None = None) -> TurnResult`, where
+    `TurnResult(spoken: list[str], tool_calls: list[dict], ui: dict, timings_ms: dict, cost_paise: int,
+    error: str | None)`. It loops for at most 4 tool rounds:
+    - a write tool's `say` is appended to `spoken` and the loop ends, with no extra LLM text;
+    - a read tool's facts go back to the LLM, and its next text is spoken;
+    - on an HTTP or timeout error, `error = "Couldn't understand that. Please say it again, or type it."`
+  - `POST /api/agent/text {"text"}` returns `TurnResult` JSON. It gives 503 without a key and 429 from the rate
+    limiter (`app/ratelimit.py`: `RateLimiter(per_ip_hour=30, per_day=300)`).
+  - `POST /api/agent/confirm` and `/api/agent/discard` handle the **tap** Sari and Cancel buttons. They set
+    `last_user_text="sari"` (or "cancel") and call the tool, so the tap is the human approval.
+
+- [ ] **Step 1: Failing tests** (httpx `MockTransport` scripted responses):
+  - `test_prompt_has_rules_items_examples`;
+  - `test_write_tool_say_is_spoken_and_llm_not_called_again`;
+  - `test_read_tool_result_goes_back_to_llm`;
+  - `test_four_round_cap`;
+  - `test_http_error_gives_exact_message`;
+  - `test_request_has_tools_and_model` (`model == "sarvam-105b"`, `tool_choice == "auto"`);
+  - `test_text_endpoint_503_without_key`;
+  - `test_tap_confirm_saves`;
+  - `test_rate_limit_429`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Real check (not CI; key from `.env`, never printed):** run three typed turns through `TextBrain`:
+  1. "Kerala Fancy-ku 24 plain palazzo S 6 M 6 L 6 XL 6";
+  2. "sari";
+  3. the Hindi discovery §6d transcript.
+
+  Ledger the tool calls and spoken text, good or bad.
+- [ ] **Step 6: Commit** `feat: text brain with Sarvam tool calling, typing and tap confirm`.
+
+### Task 11: The live voice brain (Pipecat on /api/voice)
+
+**Files:**
+- Create: `app/voice/__init__.py`, `app/voice/wire.py` (`RawPCMSerializer`), `app/voice/bot.py`,
+  `tests/voice/__init__.py`, `tests/voice/test_wire.py`, `tests/voice/test_bot_tools.py`
+- Modify: `app/api.py` (`@router.websocket("/voice")`), `requirements.txt` (`pipecat-ai[websocket,sarvam]==1.17.0`),
+  `Dockerfile` if needed
+
+**Interfaces:**
+- Consumes: `AgentSession`, `tools.TOOL_SPECS`, `prompt.system_prompt` and `say`.
+- Produces:
+  - `RawPCMSerializer`: binary is PCM16 mono 16 kHz in both directions; text messages are JSON. Outgoing events:
+    - `{"type":"user","text","lang"}`;
+    - `{"type":"bot","text"}`;
+    - `{"type":"slip", ...ui}`;
+    - `{"type":"latency","s"}`;
+    - `{"type":"clear"}` on interruption.
+
+    Incoming JSON `{"type":"note","text"}` (an uploaded note's transcript) is injected as a user turn, and
+    `{"type":"tap","action":"confirm"|"discard"}` runs the tap path.
+  - `bot.run(ws, session: AgentSession, api_key: str)`, which builds the pipeline from the spike:
+    - transport → STT → Tap → user aggregator (External turn strategies, timeout 0.3) → LLM → TTS → output →
+      assistant aggregator;
+    - one Pipecat handler per tool, wrapping the `AgentSession` method;
+    - **a write tool** pushes `TTSSpeakFrame(result.say)` and returns with
+      `FunctionCallResultProperties(run_llm=False)`;
+    - **a read tool** returns its facts with `run_llm=True`;
+    - **`confirm_pending`** is registered with `cancel_on_interruption=False`;
+    - each `TranscriptionFrame` calls `session.heard(text, language)`, and when the language changes it pushes
+      `TTSUpdateSettingsFrame` with that language.
+  - **WebSocket rules:**
+    - With no key, accept and then close with code 4003.
+    - The rate limit is 6 sessions per IP per hour (close 4029).
+    - Sessions are cancelled after 600 s.
+    - **Pipecat is imported inside the handler**, so app start and keyless tests never import it.
+  - **Verify while implementing:** the exact 1.17 names (`FunctionCallResultProperties`, `TTSSpeakFrame`,
+    `TTSUpdateSettingsFrame`, the `params.result_callback(result, properties=...)` signature) against the installed
+    package or the Context Hub. Ledger any difference as a ruling.
+
+- [ ] **Step 1: Failing tests (no network):**
+  - `test_serializer_pcm_roundtrip`;
+  - `test_serializer_note_message_becomes_user_text`;
+  - `test_write_tool_handler_speaks_say_without_llm` (a fake `FunctionCallParams` records the pushed frames and the
+    properties);
+  - `test_voice_ws_closes_4003_without_key` (TestClient websocket).
+- [ ] **Steps 2-4:** FAIL → implement → PASS (full suite, with no key and without Pipecat import errors).
+- [ ] **Step 5: Real check (not CI):**
+  - Run `spikes/pipecat/talk_test.py` pointed at `ws://127.0.0.1:8000/api/voice`. Expected:
+    - the Tamil order is staged;
+    - "சரி" saves;
+    - the spoken text after the write tools equals the `say`.
+  - Ledger the latency numbers.
+- [ ] **Step 6: Commit** `feat: live voice agent on Pipecat with grounded tool speech`.
+
+### Task 12: Uploaded voice notes (batch STT at pauses)
 
 **Files:**
 - Create: `app/audio.py`, `app/providers/sarvam_stt.py`, `tests/test_audio.py`, `tests/providers/__init__.py`,
-  `tests/providers/test_sarvam_stt.py`, `tests/fixtures/audio/hello.wav` (1.5 s tone + silence, generated by the test
-  helper with ffmpeg if absent)
-- Modify: `requirements.txt` (`httpx==0.28.1`, `python-multipart==0.0.20`), `requirements-dev.txt`
-  (`imageio-ffmpeg==0.6.0`), `.gitignore` (`!tests/fixtures/audio/*.wav`, `!app/sample/audio/*.wav`),
-  `.github/workflows/ci.yml` (`sudo apt-get install -y ffmpeg` in the test job)
+  `tests/providers/test_sarvam_stt.py`
+- Modify: `app/api.py` (`POST /api/agent/upload`, multipart `audio`), `requirements.txt`
+  (`python-multipart==0.0.20`), `requirements-dev.txt` (`imageio-ffmpeg==0.6.0`), `Dockerfile` (`apt-get install -y
+  ffmpeg`), `.github/workflows/ci.yml` (install ffmpeg)
 
 **Interfaces:**
-- Produces: `audio.ffmpeg_exe() -> str` (`shutil.which("ffmpeg")`, else `imageio_ffmpeg.get_ffmpeg_exe()`);
-  `audio.to_wav16k(src: Path, dst: Path) -> float` (mono 16 kHz, returns seconds; raises `AudioError` on undecodable);
-  `audio.silences(wav: Path) -> list[tuple[float, float]]` (ffmpeg `silencedetect=noise=-35dB:d=0.35`);
-  `audio.choose_cuts(duration: float, silences: list[tuple[float, float]], max_len: float = 28.0) -> list[float]`
-  (pure: greedily cut at the midpoint of the last silence before each `max_len` boundary; hard cut at `max_len` when
-  none); `audio.split(wav: Path, cuts: list[float], out_dir: Path) -> list[Path]`;
-  `AudioError(Exception)`; `SarvamSTT(api_key: str, client: httpx.Client | None = None)` implementing
-  `SpeechToText`, transcribing each chunk and joining with a space; language from the first chunk with a non-empty
-  transcript.
+- Produces: the same audio interfaces as the old Task 5:
+  - `ffmpeg_exe`;
+  - `to_wav16k(src, dst) -> float`;
+  - `silences(wav)`;
+  - `choose_cuts(duration, silences, max_len=28.0) -> list[float]`;
+  - `split`;
+  - `AudioError`;
+  - `SarvamSTT(api_key, client=None)` implementing `SpeechToText`.
 
-- [ ] **Step 1: Failing tests:** `test_choose_cuts_prefers_silence` (`choose_cuts(35.8, [(17.6, 18.2)]) == [17.9]`);
-  `test_choose_cuts_hard_cut_without_silence` (`choose_cuts(60, []) == [28.0, 56.0]`);
-  `test_choose_cuts_short_audio` (`choose_cuts(12, []) == []`); `test_to_wav16k_rejects_garbage` (bytes `b"not audio"`
-  → `AudioError`); `test_sarvam_stt_joins_chunks` (httpx `MockTransport` returning two transcripts; asserts form
-  fields `model=saaras:v4`, `mode=codemix`, `language_code=unknown` and header `api-subscription-key`);
-  `test_sarvam_stt_5xx_raises_provider_error`.
-- [ ] **Step 2-4:** FAIL → implement → PASS.
-- [ ] **Step 5: Real check (not in CI):** transcribe `data/private/recordings/2026-11-27-customer-order-1.ogg`
-  through `SarvamSTT` with silence cuts; expect one transcript containing "Girnar Transport" with no duplicated
-  "50 piece" at the cut. Record the result in the ledger.
-- [ ] **Step 6: Commit** `feat: audio splitting at pauses and Sarvam speech-to-text`.
+  `POST /api/agent/upload`:
+  - saves the audio;
+  - transcribes it;
+  - calls `TextBrain.turn("Forwarded voice note from a buyer: " + transcript, language)`;
+  - returns `TurnResult` plus `transcript`.
 
-### Task 6: Sarvam extractor with validation, retry and prompt fixes
+  It gives 422 for `AudioError` (silent, under 0.5 s, over 5 minutes, or undecodable) and 503 without a key. (When a
+  live socket is open, the page instead sends `{"type":"note"}` over the socket with the transcript returned by
+  `POST /api/agent/transcribe`.)
+
+- [ ] **Step 1: Failing tests:**
+  - `test_choose_cuts_prefers_silence` (`choose_cuts(35.8, [(17.6, 18.2)]) == [17.9]`);
+  - `test_choose_cuts_hard_cut_without_silence` (`== [28.0, 56.0]` for 60 s);
+  - `test_choose_cuts_short_audio`;
+  - `test_to_wav16k_rejects_garbage`;
+  - `test_sarvam_stt_joins_chunks`;
+  - `test_sarvam_stt_5xx_raises_provider_error`;
+  - `test_upload_garbage_422`;
+  - `test_upload_runs_text_brain` (fake STT and fake brain).
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Real check:** upload `data/private/recordings/2026-11-27-customer-order-1.ogg`. Expected:
+  - the agent asks which customer, because the note names no shop;
+  - "Girnar Transport" appears once;
+  - no duplicated "50 piece".
+
+  Ledger the result.
+- [ ] **Step 6: Commit** `feat: forwarded voice notes go to the agent (split at pauses, Sarvam STT)`.
+
+### Task 13: The screen: talk, slip, sari, bill, packing list, khata
 
 **Files:**
-- Create: `app/providers/prompt.py`, `app/providers/sarvam_llm.py`, `app/providers/fixture.py`,
-  `tests/providers/test_sarvam_llm.py`, `tests/providers/test_prompt.py`
+- Modify: `app/static/index.html`, `app/static/app.js`, `app/static/styles.css`, `app/api.py`
+- Create: `app/static/voice.js` (the mic worklet and PCM player from the spike, plus socket events),
+  `tests/test_pages_api.py`
 
 **Interfaces:**
-- Produces: `prompt.build_messages(transcript: str, open_orders: list[Order], catalog: Catalog) -> list[dict]`
-  (system message: role and rules; item list as `CODE: name (aliases)`; open orders as
-  `#id customer, city: CODE sizes…`; four worked examples as user/assistant pairs: (a) age bands go to `sizes`
-  (`{"1-10 yrs": 50}`) with one `add_line` per item; (b) "book Girnar Transport, I'll pay to your account" →
-  `set_field transport "Girnar Transport"` and `set_field payment "bank"`; (c) no shop name said → `customer: null`;
-  (d) an item not in the list → `item_code: null`, keep `name_as_spoken`; rule text: "never use the code of a
-  different item: women's and teen items are not girls' items");
-  `SarvamExtractor(api_key: str, client: httpx.Client | None = None, model: str = "sarvam-105b")` implementing
-  `Extractor`: one retry, sending the validation error back as a user message; second failure → `ProviderError`;
-  `FixtureExtractor(results: list[PieceResult])` returning them in order.
+- **HTTP:**
+  - `GET /api/bills/{number}` returns bill JSON plus `share_text`;
+  - `GET /bill/{number}` returns a printable HTML page;
+  - `GET /api/customers` returns `[{"id","name","city","balance_paise","balance"}]`;
+  - `GET /api/customers/{id}/khata` returns the entries and the balance;
+  - `POST /api/customers/{id}/undo` returns `{"message"}`.
+- **The page:**
+  - a big **Talk** button (opens `/api/voice`; when the key is missing, it shows "Sarvam API key not set: try the
+    sample");
+  - **Upload a voice note**;
+  - **Type** a box;
+  - a live conversation strip;
+  - the **order slip**, showing "Waiting for sari" with **Sari** and **Cancel** tap buttons;
+  - **Bills**, each with a **Share** button (`navigator.share`, else copy the text) and **Print**;
+  - a **Packing list**;
+  - **Khata**, showing balances and **Undo last**;
+  - the page sends `X-Sample-Session` **only** on sample calls (the Task 3 ruling).
 
-- [ ] **Step 1: Failing tests:** `test_prompt_lists_open_orders_with_ids`; `test_prompt_has_age_band_example`;
-  `test_extractor_valid_first_try` (MockTransport; `attempts == 1`, tokens read from `usage`);
-  `test_extractor_retries_once_on_invalid_json` (`attempts == 2`; second request contains the error text);
-  `test_extractor_gives_up_after_two_invalid` (`ProviderError`); `test_extractor_timeout_is_provider_error`;
-  `test_request_body_uses_json_schema_strict` (`response_format.json_schema.strict is True`, `reasoning_effort is None`).
-- [ ] **Step 2-4:** FAIL → implement → PASS.
-- [ ] **Step 5: Real check (not in CI):** run on the Hindi transcript (scratch script). Expected now: customer null,
-  GPT with sizes `{"1-10 yrs": 50}` only for girls; women's and teen items `item_code` null; transport and payment
-  set. Ledger the actual output, good or bad.
-- [ ] **Step 6: Commit** `feat: Sarvam extractor with strict schema, retry and worked examples`.
+- [ ] **Step 1: Failing tests:**
+  - `test_bill_page_has_estimate_title_and_no_gst` (the HTML contains `Order bill (estimate)` and
+    `Tax as per final invoice`, and no `GST`);
+  - `test_customers_list_balances`;
+  - `test_undo_endpoint`;
+  - `test_live_orders_listed_without_sample_header`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5: Browser check** (Playwright, at 420 px wide): typed order → slip → Sari → "bill it" → Sari → bill
+  page. Screenshots go in `docs/round2/screens/`.
+- [ ] **Step 6: Commit** `feat: talk screen with slip, tap confirm, bill, packing list and khata`.
 
-### Task 7: Live piece endpoint, upload and hold-to-talk
+### Task 14: The keyless sample tells the whole story
 
 **Files:**
-- Create: `app/flow/live.py`, `app/ratelimit.py`, `tests/test_live_api.py`
-- Modify: `app/api.py`, `app/main.py`, `app/store/db.py` (piece state `failed`; `audio_path` set),
-  `app/static/index.html`, `app/static/app.js`, `app/static/styles.css`
+- Modify: `app/sample/conversation.json`, `app/api.py` (`/api/sample/next`), `app/static/app.js`
+- Create: `scripts/make_sample_audio.py`, `app/sample/audio/*.wav`, `tests/test_sample_story.py`
 
 **Interfaces:**
-- Consumes: Tasks 4-6 protocols; `PieceService.propose`.
-- Produces: `LiveService(pieces: PieceService, stt: SpeechToText, extractor: Extractor, audio_dir: Path)` with
-  `from_audio(upload_path: Path, original_name: str) -> LiveOutcome` and `from_text(text: str) -> LiveOutcome`;
-  `LiveOutcome(proposal: Proposal | None, transcript: str, language: str, timings_ms: dict[str, int],
-  cost_paise: int, error: str | None)`. HTTP: `POST /api/pieces/audio` (multipart `audio`) and `POST /api/pieces/text`
-  (`{"text": str}`) → `{"transcript", "language", "timings_ms", "cost_paise", "cost", "proposal" | null, "error" | null}`;
-  503 without key; 422 for `AudioError`; 429 from `RateLimiter(per_ip_hour=30, per_day=300)`.
-  Failure message (exact): `Couldn't understand that. Please say it again, or type it.`
-  `GET /api/pieces/{id}/audio` streams the stored audio (404 if none).
-- UI: mic enabled when providers are ready (hold to record with `MediaRecorder`, `audio/webm`), "Upload a voice note"
-  file input (`accept="audio/*"`), a text box "Or type the order"; the slip shows the transcript, "STT 1.8 s · AI 2.4 s ·
-  ₹0.62 (estimated)", and a ▶ on each line that has a source piece with audio.
+- Each sample step is `{"user_text", "language", "user_audio", "tool_calls": [{"name", "args"}], "bot_audio"}`.
+  `/api/sample/next`:
+  - runs the saved tool calls on that tab's `AgentSession` (in-memory store);
+  - calls `heard(user_text)` first;
+  - returns `{"label": "Sample: saved AI results · synthetic voice", "index", "total", "user_text", "spoken": [say…],
+    "slip", "user_audio_url", "bot_audio_url"}`.
+- **Steps:**
+  1. Tamil order piece;
+  2. Tamil addition, transport and credit;
+  3. "சரி";
+  4. a Hindi forwarded note (customer asked, so the next step says "Kerala Fancy");
+  5. "bill it";
+  6. "சரி";
+  7. "Kerala Fancy paid 5,000 by UPI";
+  8. "சரி";
+  9. "What's still to ship?"
+- `make_sample_audio.py` (key needed; run once) synthesises `user_text` and the expected `say` texts with Bulbul and
+  writes the WAVs plus a `say_texts.json`.
 
-- [ ] **Step 1: Failing tests** (fakes for STT and extractor, no network): `test_audio_piece_proposes`;
-  `test_text_piece_proposes`; `test_no_key_returns_503` (real providers, no env); `test_garbage_audio_422`;
-  `test_provider_failure_sets_failed_state` (piece state `failed`, response `error` equals the exact message);
-  `test_rate_limit_429`; `test_piece_audio_served`; `test_traces_written_per_step` (stt, extract spans).
-- [ ] **Step 2-4:** FAIL → implement → PASS (full suite).
-- [ ] **Step 5: Browser check** (Playwright, key set locally): upload the Hindi note → slip shows lines and timings;
-  screenshot `docs/round2/screens/s3-live-hindi.png`.
-- [ ] **Step 6: Commit** `feat: live voice pieces by upload, hold-to-talk or typing`.
+- [ ] **Step 1: Failing tests:**
+  - `test_sample_runs_all_steps_without_key`;
+  - `test_sample_ends_with_bill_and_balance`;
+  - `test_sample_bot_audio_text_matches_say` (the `say_texts.json` entries equal the runtime `say`, so the audio
+    can't drift from the code).
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5:** Generate the audio (key set) and commit the WAVs. Ask the owner to check the Tamil wording.
+- [ ] **Step 6: Commit** `feat: keyless sample plays the full order-to-khata story with synthetic voice`.
 
-### Task 8: Eval set v1 and scorer
+### Task 15: Eval set v1, including claims versus tool calls
 
 **Files:**
 - Create: `eval/__init__.py`, `eval/cases/*.json` (12 cases), `eval/score.py`, `eval/run.py`, `eval/README.md`,
   `docs/round2/05-evalset.md`, `tests/test_eval_score.py`
 
 **Interfaces:**
-- Case format: `{"id", "source": "real"|"synthetic", "language", "pieces": [{"transcript", "gold_customer":
-  "new"|"#<n>"|"ask", "gold_changes": [Change JSON]}], "gold_final": [{"customer", "lines": [{"item_code", "sizes",
-  "quantity"}], "transport", "payment"}]}`.
-- Produces: `score.score_case(case: dict, run: CaseRun) -> CaseScore` and `score.summary(scores) -> dict` with
-  `routing_acc, change_acc, final_order_acc, silent_errors, p50_ms, cost_paise_total`. A **silent error** is a final
-  order line whose quantity, size or item differs from gold and was not flagged by a problem or ask.
-  `python -m eval.run --provider fixture|sarvam --out eval/reports/` writes `YYYY-MM-DD-<provider>.md` and `.json`.
-- Cases (12): the real Hindi note (transcript from discovery §6d) as `source: real`; 11 synthetic, labelled, covering:
-  2-3 piece merges (Tamil code-mix), a change and a removal, a near-miss customer, a forwarded note with no shop name,
-  an unknown item, a rate spoken off-list, transport+payment only, Malayalam-English, Kannada-English, an "unclear"
-  piece.
+- **Case format:** `{"id", "source": "real"|"synthetic", "language", "turns": [{"user_text"}], "gold_final": {"orders":
+  [{"customer", "lines": [{"item_code", "sizes", "quantity"}], "transport", "payment", "state"}], "balances":
+  {"customer": paise}}}`.
+- **Produces:**
+  - `score.score_case(case, run: CaseRun) -> CaseScore`;
+  - `score.summary(scores)` → `final_order_acc`, `line_acc`, `silent_errors`, `false_claims`, `asked_when_needed`,
+    `p50_ms` and `cost_paise_total`.
+  - A **silent error** is a final line that differs from gold and was not flagged by a problem or an ask.
+  - A **false claim** is a turn where the LLM's free text (not a tool `say`) contains a claim word but no write tool ran
+    that turn. The claim words are: added, saved, billed, set, sērthu, சேர்த்து, panniten, पंजीकृत, जोड़, ചേർത്ത,
+    ಸೇರಿಸ.
+  - `python -m eval.run --brain text --out eval/reports/` writes a report from the text brain, with `heard()` and
+    `confirm` driven by "sari" turns.
+- **Cases (12):**
+  - 1 real: the Hindi note;
+  - 11 synthetic, labelled:
+    - Tamil multi-piece;
+    - a change and a removal;
+    - a near-miss customer;
+    - no shop name;
+    - an unknown item;
+    - an off-list rate;
+    - bill, then payment;
+    - "sari" without pending;
+    - "also add ten shorts" during pending;
+    - Malayalam;
+    - Kannada.
 
-- [ ] **Step 1: Failing tests:** `test_perfect_run_scores_100`; `test_wrong_quantity_unflagged_is_silent_error`;
-  `test_wrong_quantity_flagged_is_not_silent`; `test_routing_counts_ask_as_correct_when_gold_is_ask`.
-- [ ] **Step 2-4:** FAIL → implement → PASS.
-- [ ] **Step 5: Run** `python -m eval.run --provider sarvam` (key set). Commit the report as is, whatever it shows;
-  write the numbers and one paragraph of failure analysis into `05-evalset.md` and the README.
-- [ ] **Step 6: Commit** `feat: eval set v1 with scorer and first Sarvam report`.
+- [ ] **Step 1: Failing tests:**
+  - `test_perfect_run_scores_100`;
+  - `test_wrong_quantity_unflagged_is_silent_error`;
+  - `test_flagged_is_not_silent`;
+  - `test_claim_without_tool_is_false_claim`;
+  - `test_tool_say_is_not_a_claim`.
+- [ ] **Steps 2-4:** FAIL → implement → PASS.
+- [ ] **Step 5:** Run with the key and commit the report whatever it shows. Put the numbers and one paragraph of
+  failure analysis into `05-evalset.md` and the README.
+- [ ] **Step 6: Commit** `feat: eval set v1 with false-claim and silent-error scoring`.
 
-### Task 9: Spoken read-back, voice confirm and sample audio
-
-**Files:**
-- Create: `app/flow/reply.py`, `app/providers/sarvam_tts.py`, `scripts/make_sample_audio.py`,
-  `app/sample/audio/piece1.wav` … `piece3.wav`, `tests/flow/test_reply.py`, `tests/providers/test_sarvam_tts.py`
-- Modify: `app/flow/readback.py`, `app/api.py`, `app/static/app.js`, `app/sample/conversation.json`
-
-**Interfaces:**
-- Produces: `readback.build_readback(..., language: str = "en-IN")` with `ta-IN` and `hi-IN` templates (same
-  structure: who, each change, total, still needed, "say sari / haan to confirm"); `reply.classify(text: str) ->
-  Literal["yes","no","other"]` using the Global Constraints word lists on normalised text (whole words; "ok" inside
-  "book" must not count); `SarvamTTS(api_key, client=None)`; `POST /api/pieces/{id}/speak` → `audio/wav` (503 without
-  key; the page falls back to `speechSynthesis`); `POST /api/pieces/{id}/reply` (multipart audio) → transcribe →
-  `yes` confirms, `no` discards, `other` runs the audio as a new piece and leaves this one pending.
-- Sample audio: `scripts/make_sample_audio.py` calls Bulbul for the three sample transcripts; the sample bubble gets a ▶
-  and the label `Sample: saved AI results · synthetic voice`.
-
-- [ ] **Step 1: Failing tests:** `test_classify_yes_tamil` ("சரி" → yes); `test_classify_haan`;
-  `test_classify_no_vendaam`; `test_classify_other_new_order_text` ("also add ten shorts" → other);
-  `test_classify_ok_inside_word_is_not_yes` ("book it" → other); `test_readback_tamil_piece1` (Tamil read-back
-  of sample piece 1 contains "₹3,131.10" and "சரி"); `test_reply_other_keeps_piece_pending`;
-  `test_tts_request_body` (MockTransport: `target_language_code`, `model=bulbul:v3`).
-- [ ] **Step 2-4:** FAIL → implement → PASS.
-- [ ] **Step 5:** Generate the sample WAVs (key set), commit them; ask the owner to check the Tamil read-back wording.
-- [ ] **Step 6: Commit** `feat: spoken read-back in Tamil and Hindi with voice confirm`.
-
-### Task 10: Docs, status page and halfway gate
+### Task 16: Docker, docs and the halfway gate
 
 **Files:**
-- Modify: `README.md` (status table, eval table, screenshot), `docs/round2/04-rfc.md` §12 (actual dates),
-  `docs/round2/project-status.html` (artifact source)
+- Modify: `README.md` (status table, architecture section rewritten for the agent, eval table, screenshots),
+  `docs/round2/04-rfc.md` (a pointer to the design doc and the actual dates), `docs/round2/project-status.html`
 
-- [ ] **Step 1:** Halfway gate, by hand with the key set: upload the real Hindi note → read-back spoken → say "haan"
-  → order saved with transport and payment; screenshot. Record pass or fail honestly in the ledger.
-- [ ] **Step 2:** Update README "What works today / Planned" and the eval table from Task 8's report.
-- [ ] **Step 3:** Run `python -m pytest -q` → PASS; push branch; CI green.
-- [ ] **Step 4: Commit** `docs: S2-S4 status, eval results and halfway gate`.
+- [ ] **Step 1:** Run `docker compose build` then `docker compose up` with no `.env`.
+  - **Expected:** the main screen loads; Talk shows "key not set"; the sample plays fully.
+  - Record the image size in the ledger. If Docker Desktop isn't available locally, rely on CI's compose job and say
+    so.
+- [ ] **Step 2: Halfway gate (key set, by hand):**
+  1. talk in Tamil;
+  2. upload the Hindi note;
+  3. say "சரி";
+  4. "bill it", then "சரி";
+  5. a payment;
+  6. "what is to ship?".
+
+  Screenshot it, and record pass or fail honestly.
+- [ ] **Step 3:** Update the README status, architecture (with a mermaid diagram of the agent and tools) and eval
+  numbers.
+- [ ] **Step 4:** Run `python -m pytest -q` → PASS. Push the branch. CI green.
+- [ ] **Step 5: Commit** `docs: voice agent status, eval results and halfway gate`.
 
 ---
 
+## Cut order if late (from the design, §7)
+
+1. The WhatsApp share button (keep copy-text).
+2. Malayalam and Kannada templates (fall back to `en-IN`).
+3. `ask_shop` `item_count`.
+4. `mark_shipped`.
+
+Bill, packing list, khata, the live voice brain and the keyless sample are never cut.
+
 ## Self-review notes
 
-- Spec coverage: R1 (T7), R2 (T5), R3 (T6), R5 (T7 slip), R6 (T9), R7 voice (T9), R11 playback (T7), R14 traces
-  (T4, T7; full `/traces` page cut), eval §9 (T8), guardrails 3-5 (T2, T7). R9-R10 (bill, khata) belong to the S5 plan.
-- Cut on purpose (review): `/traces` page, Gemini backup extractor, fpdf2 PDF, S6 extras, Tamil labels.
-- Probe findings 1-4 each have a test: 1 → T1 `test_customer_not_said_asks` + T6 example (c); 2 → T2
-  `test_item_code_contradicting_name_is_problem`; 3 → T6 example (a) + eval real case; 4 → T6 example (b) + eval.
-- Open dependency: women's/teen item rates from the owner. Until then the real Hindi case's gold marks those items
-  as "unknown item asked", which is the correct guarded behaviour.
+- **Spec coverage:**
+
+  | Design section | Tasks |
+  |---|---|
+  | §2 goals 1-7 | T9-T13 |
+  | Bill, no tax | T5 + T13 |
+  | Khata and undo | T6 + T13 |
+  | Ask | T7 + T9 |
+  | 4 languages | T8 |
+  | Grounded replies | T9-T11, T15 |
+  | Keyless story | T14 |
+  | Decisions 1-7 of §7 | T9 (one sari per piece, merge), T6 (reversal), T5 (estimate title), T7 (7 days), T14 (Tamil + Hindi demo) |
+
+- **Superseded old tasks:**
+  - the old Task 6 extractor and its JSON schema are replaced by tool calling (T9-T10);
+  - the old Task 7 endpoints are replaced by T10-T13;
+  - the old Task 9 read-back and voice confirm are replaced by T8, T9 and T11.
+- **Interface consistency:**
+  - `ToolResult.say` is spoken in T10 and T11 and checked in T14 and T15;
+  - `AgentSession.heard` is called by T10, T11 and T14;
+  - `Pending.kind` covers bill, payment and ship, from T5-T6.
+- **Open dependency:** women's and teen rates from the owner. Until they arrive, the real case's gold expects "asked
+  or unknown item" for those lines.
