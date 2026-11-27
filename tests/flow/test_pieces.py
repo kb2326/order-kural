@@ -203,3 +203,11 @@ def test_customer_not_said_asks(svc, store):
     p = run(svc, {**P1, "customer": {"match": "new"}})
     assert p.ask_customer is True
     assert store.get_piece(p.piece_id)["state"] == "proposed"
+
+
+def test_near_miss_customer_asks(svc, store):
+    a = run(svc, P1)
+    svc.confirm(a.piece_id)
+    p = run(svc, {**P3, "customer": {"name_as_spoken": "Kerala Fancies", "match": "existing"}})
+    assert p.ask_customer is True
+    assert "Kerala Fancy" in p.readback and "new customer" in p.readback

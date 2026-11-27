@@ -6,6 +6,7 @@ is now, so two pieces read back at the same time cannot overwrite each other.
 """
 from __future__ import annotations
 
+import difflib
 import json
 from dataclasses import asdict, dataclass
 
@@ -48,6 +49,16 @@ def candidates(ref: CustomerRef, open_orders: list[Order]) -> list[Order]:
             and (not city or not o.city or normalise(o.city) == city)]
 
 
+def near_matches(ref: CustomerRef, open_orders: list[Order]) -> list[Order]:
+    """Open orders whose customer name is close to, but not the same as, what was said ("Kerala Fancies")."""
+    if not ref.name_as_spoken:
+        return []
+    wanted = normalise(ref.name_as_spoken)
+    return [o for o in open_orders
+            if normalise(o.customer_name) != wanted
+            and difflib.SequenceMatcher(None, normalise(o.customer_name), wanted).ratio() >= 0.75]
+
+
 def resolve_target(ref: CustomerRef, open_orders: list[Order]) -> Order | None:
     """Which open order does this piece belong to? None means start a new order (or ask, if several match)."""
     found = candidates(ref, open_orders)
@@ -74,7 +85,8 @@ class PieceService:
             problems.append("Customer not heard")
         open_orders = self.store.open_orders()
         found = candidates(ref, open_orders) if ref else []
-        ask_customer = ref is None or not ref.said or ref.confidence == "low" or len(found) > 1
+        near = near_matches(ref, open_orders) if ref and not found else []
+        ask_customer = ref is None or not ref.said or ref.confidence == "low" or len(found) > 1 or bool(near)
 
         target = found[0] if len(found) == 1 else None
         base = target or (_new_order(ref) if ref else _new_order(CustomerRef(name_as_spoken="?")))
@@ -82,7 +94,9 @@ class PieceService:
         problems += applied.problems
         totals = compute_totals(applied.order, self.catalog)
         missing = missing_fields(applied.order)
-        readback = ("Which customer is this for?" if ask_customer else
+        question = (f"Is this for {' or '.join(o.customer_name for o in near)}, or a new customer?" if near
+                    else "Which customer is this for?")
+        readback = (question if ask_customer else
                     build_readback(applied.order, applied.diff, totals, missing, self.catalog, problems))
         # Only a piece that was understood, names one customer and changes something can be confirmed.
         confirmable = not ask_customer and result.intent == "order_changes" and bool(applied.diff)

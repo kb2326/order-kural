@@ -60,9 +60,14 @@ def _find(order: Order, code: str) -> OrderLine | None:
 
 def _add(new: Order, ch: AddLine, catalog: Catalog, diff: list[DiffEntry], problems: list[str]) -> None:
     item = catalog.get(ch.item_code) if ch.item_code else None
+    if item is not None and not catalog.plausible(item, ch.name_as_spoken):
+        problems.append(f"Item code {item.code} does not match '{ch.name_as_spoken}'")
+        return
     item = item or catalog.match(ch.name_as_spoken)
     if item is None:
-        problems.append(f"Unknown item: {ch.name_as_spoken}")
+        close = catalog.closest(ch.name_as_spoken)
+        hint = f". Closest: {', '.join(i.name for i in close)}" if close else ""
+        problems.append(f"Unknown item: {ch.name_as_spoken}{hint}")
         return
     sizes = {s: q for s, q in ch.sizes.items() if q > 0}
     added = sum(sizes.values()) if sizes else (ch.quantity_total or 0)
