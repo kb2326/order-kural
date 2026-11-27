@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from datetime import date
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.domain.bill import (STATE_NAMES, Invoice, InvoiceLine, make_invoice, packing_list, share_text,
@@ -14,6 +14,14 @@ from app.domain.money import format_inr
 from app.domain.order import Order
 from app.domain.rules import Payment
 from app.store.db import Store
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def today_ist() -> str:
+    """Invoice date in India time (the container clock is UTC: a bill at 1 am IST must not get yesterday's date)."""
+    return datetime.now(IST).date().isoformat()
 
 
 SHOP_FILE = Path(__file__).parent.parent.parent / "data" / "shop.json"
@@ -43,8 +51,7 @@ class ShopService:
         if not order.lines:
             raise ShopError(f"Nothing to bill for {order.customer_name}")
         try:
-            return make_invoice(order, self.catalog, self.shop, self.store.next_bill_number(),
-                                date.today().isoformat())
+            return make_invoice(order, self.catalog, self.shop, self.store.next_bill_number(), today_ist())
         except ValueError as e:
             raise ShopError(str(e)) from e
 
@@ -100,6 +107,8 @@ class ShopService:
                                   reverses=target["id"])
             if target["kind"] == "bill":
                 bill = self.store.get_bill(target["ref_bill"])
+                if self.store.get_order(bill["order_id"]).state != "billed":  # 27 Nov review: shipped goods
+                    raise ShopError(f"Bill {bill['number']}: the goods are already shipped, so it can't be undone")
                 self.store.set_bill_voided(bill["number"])
                 self.store.set_order_state(bill["order_id"], "open")
                 return f"Bill {bill['number']} undone"

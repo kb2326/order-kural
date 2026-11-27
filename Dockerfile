@@ -12,4 +12,6 @@ COPY app/ app/
 COPY data/ data/
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Behind Cloud Run the client IP arrives in X-Forwarded-For; without these flags every visitor would share one
+# rate-limit bucket.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

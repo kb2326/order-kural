@@ -134,3 +134,24 @@ def test_item_echo_without_a_tool_is_corrected():
 def test_question_about_an_item_is_not_corrected():
     b, _ = brain(Script(text("Crop top-ku M size-la ethana?")))
     assert len(b.turn("crop top venum", "ta-IN").spoken) == 1
+
+
+def test_history_window_never_starts_inside_a_tool_exchange():
+    """27 Nov review: trimming could keep a tool reply without the assistant tool_calls message before it."""
+    from app.agent.text_loop import window
+    msgs = []
+    for i in range(20):
+        msgs += [{"role": "user", "content": f"u{i}"},
+                 {"role": "assistant", "content": "", "tool_calls": [{"id": f"c{i}"}]},
+                 {"role": "tool", "tool_call_id": f"c{i}", "content": "{}"},
+                 {"role": "assistant", "content": "said"}]
+    kept = window(msgs, 30)
+    assert kept[0]["role"] == "user" and len(kept) <= 30
+
+
+def test_repeated_tool_call_is_not_spoken_twice():
+    both = tool_call("add_to_order", ADD)
+    both["choices"][0]["message"]["tool_calls"] *= 2
+    b, _ = brain(Script(both))
+    r = b.turn("Kerala Fancy plain palazzo S 6 M 6", "ta-IN")
+    assert len(r.spoken) == 1

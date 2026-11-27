@@ -64,3 +64,21 @@ def test_bad_arguments_do_not_crash(session):
     asyncio.run(make_handler(session, "add_to_order")(params))
     [(result, _)] = params.results
     assert "error" in result["facts"]
+
+
+def test_repeated_call_in_voice_is_not_spoken_again(session):
+    args = {"customer": "Kerala Fancy", "items": [{"name_as_spoken": "plain palazzo", "item_code": "PPL",
+                                                    "sizes": {"S": 6}}]}
+    first, second = FakeParams(args), FakeParams(args)
+    asyncio.run(make_handler(session, "add_to_order")(first))
+    asyncio.run(make_handler(session, "add_to_order")(second))
+    assert [f for f in first.llm.pushed if isinstance(f, TTSSpeakFrame)]
+    assert not [f for f in second.llm.pushed if isinstance(f, TTSSpeakFrame)]
+    assert second.results[0][1].run_llm is False
+
+
+def test_llm_words_in_a_reply_that_called_a_tool_are_dropped():
+    """27 Nov review: '30 shirts added' spoken by the LLM next to a tool call was never checked."""
+    from app.voice.bot import speak_llm_text
+    assert speak_llm_text("30 shirts added", tool_called=True) is False
+    assert speak_llm_text("Which customer is this for?", tool_called=False) is True

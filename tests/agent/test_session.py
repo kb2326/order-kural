@@ -160,7 +160,9 @@ def test_payment_unknown_customer_asks(agent):
 
 
 def test_mark_shipped_then_sari(agent, store):
-    agent.add_to_order("Kerala Fancy", PALAZZO)
+    agent.add_to_order("Kerala Fancy", PALAZZO, state="Kerala")
+    sari(agent)
+    agent.bill_order("Kerala Fancy")  # goods are shipped with their invoice
     sari(agent)
     agent.mark_shipped("Kerala Fancy", "KPN")
     sari(agent)

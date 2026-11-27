@@ -12,8 +12,10 @@ from __future__ import annotations
 import difflib
 import json
 import re
-from dataclasses import dataclass, field
+import threading
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from app.agent import say, words
@@ -22,7 +24,7 @@ from app.domain.changes import CustomerRef, PieceResult
 from app.domain.order import Order, describe
 from app.domain.rules import normalise_payment
 from app.flow import ask
-from app.flow.pieces import PieceService, Proposal
+from app.flow.pieces import PieceService, PieceStateError, Proposal
 from app.flow.shop import ShopError, ShopService
 
 RECENT_TURNS = 6
@@ -37,6 +39,7 @@ class ToolResult:
     say: str
     ui: dict
     wrote: bool
+    repeat: bool = False  # an identical call already ran this turn: do not speak it again
 
 
 @dataclass
@@ -48,6 +51,7 @@ class Pending:
     city: str | None = None
     args: dict = field(default_factory=dict)
     view: dict = field(default_factory=dict)
+    staged_turn: int = 0  # the turn of speech in which this was read back
 
 
 def _loose_items(items: Any) -> list[dict]:
@@ -87,6 +91,9 @@ class AgentSession:
         self.turn = 0
         self.since_saved: list[str] = []  # everything said since the last save or cancel: the words behind a piece
         self._last_call: tuple | None = None  # (turn, name, args) of the last tool call, and its result
+        self.yes_used_turn = -1  # a yes word approves one thing only
+        self.brain = None  # the text brain for this conversation, if any (kept here so eviction frees it)
+        self.lock = threading.RLock()  # HTTP taps (worker threads) and voice tools (event loop) share a session
 
     # ---- plumbing ------------------------------------------------------------------------------------------
     def heard(self, text: str, language: str | None = None) -> None:
@@ -217,7 +224,7 @@ class AgentSession:
                            f"{self._name(d.item_code)} {d.after}" if d.item_code else f"{d.field} {d.after}")
         changed, removed = list(latest.values()), []
         total = _total(proposal.order)
-        self.pending = Pending(kind="order", customer=proposal.order.customer_name, piece_id=proposal.piece_id,
+        self.pending = Pending(staged_turn=self.turn, kind="order", customer=proposal.order.customer_name, piece_id=proposal.piece_id,
                                changes=combined, city=city,
                                view={"lines": self._lines_view(proposal.order), "total_paise": total,
                                      "transport": proposal.order.transport, "payment": proposal.order.payment,
@@ -239,7 +246,7 @@ class AgentSession:
             inv = self.shop.preview_invoice(order)
         except ShopError as e:  # e.g. place of supply unknown: the owner must say the state or GSTIN
             return self._say("problems", {"customer": order.customer_name, "problems": [str(e)]}, wrote=False)
-        self.pending = Pending(kind="bill", customer=order.customer_name, args={"order_id": order.id},
+        self.pending = Pending(staged_turn=self.turn, kind="bill", customer=order.customer_name, args={"order_id": order.id},
                                view={"lines": self._lines_view(order), "taxable_paise": inv.taxable_paise,
                                      "tax_paise": inv.igst_paise + inv.cgst_paise + inv.sgst_paise,
                                      "total_paise": inv.grand_total_paise, "interstate": inv.interstate,
@@ -254,14 +261,18 @@ class AgentSession:
         customer_id = self._customer_id(customer)
         if customer_id is None:
             return self._say("ask_customer", {"near": self._near_customer(customer)}, wrote=False)
-        if not amount_rupees or amount_rupees <= 0:
+        try:  # exact paise from whatever number the AI sent (27 Nov review: 1500.55 crashed the turn)
+            amount_paise = int((Decimal(str(amount_rupees)) * 100).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        except (InvalidOperation, ValueError, TypeError):
+            amount_paise = 0
+        if amount_paise <= 0:
             return self._say("problems", {"customer": customer, "problems": ["Amount not clear"]}, wrote=False)
         mode = normalise_payment(mode or "") or "cash"
         name = self.store.customer_name(customer_id)
-        self.pending = Pending(kind="payment", customer=name,
-                               args={"customer_id": customer_id, "amount_paise": amount_rupees * 100, "mode": mode},
-                               view={"amount_paise": amount_rupees * 100, "mode": mode})
-        return self._say("payment_staged", {"customer": name, "amount_paise": amount_rupees * 100, "mode": mode},
+        self.pending = Pending(staged_turn=self.turn, kind="payment", customer=name,
+                               args={"customer_id": customer_id, "amount_paise": amount_paise, "mode": mode},
+                               view={"amount_paise": amount_paise, "mode": mode})
+        return self._say("payment_staged", {"customer": name, "amount_paise": amount_paise, "mode": mode},
                          wrote=True)
 
     def mark_shipped(self, customer: str, transport: str | None = None) -> ToolResult:
@@ -269,11 +280,16 @@ class AgentSession:
         if busy:
             return busy
         wanted = normalise(customer)
-        found = [o for o in self.store.orders_in_states(["open", "billed"]) if normalise(o.customer_name) == wanted]
+        found = [o for o in self.store.orders_in_states(["billed"]) if normalise(o.customer_name) == wanted]
         if not found:
+            unbilled = any(normalise(o.customer_name) == wanted for o in self.store.open_orders())
+            if unbilled:  # 27 Nov review: shipping an unbilled order made it impossible to invoice
+                return self._say("problems", {"customer": customer,
+                                              "problems": ["Make the GST bill before marking it shipped"]},
+                                 wrote=False)
             return self._say("no_open_order", {"customer": customer}, wrote=False)
         order = found[-1]
-        self.pending = Pending(kind="ship", customer=order.customer_name,
+        self.pending = Pending(staged_turn=self.turn, kind="ship", customer=order.customer_name,
                                args={"order_id": order.id, "transport": transport}, view={"transport": transport})
         return self._say("shipped_staged", {"customer": order.customer_name, "transport": transport}, wrote=True)
 
@@ -300,8 +316,12 @@ class AgentSession:
         p = self.pending
         if p is None:
             return self._say("nothing_pending", {}, wrote=False)
-        if words.classify(self.last_user_text) != "yes":
+        # The yes must be said AFTER this was read back, and one yes approves one thing (27 Nov review: one "sari"
+        # in the same reply confirmed an order and then an invoice the owner never heard).
+        if words.classify(self.last_user_text) != "yes" or self.turn <= p.staged_turn \
+                or self.yes_used_turn == self.turn:
             return self._say("need_yes", {"customer": p.customer}, wrote=False)
+        self.yes_used_turn = self.turn
         self.pending = None  # cleared first, so the slip returned with the result shows nothing waiting
         self.since_saved = []
         try:
@@ -340,12 +360,13 @@ class AgentSession:
             return self._quiet({"error": f"Unknown tool {name}"})
         # sarvam-105b can send the same tool call twice in one reply (27 Nov Docker voice check: every quantity
         # doubled). An identical call within the same turn of speech returns the first result instead of re-applying.
-        key = (self.turn, name, json.dumps(args, sort_keys=True, default=str))
-        if self._last_call and self._last_call[0] == key:
-            return self._last_call[1]
-        try:
-            result = getattr(self, name)(**args)
-        except TypeError as e:
-            return self._quiet({"error": f"Bad arguments for {name}: {e}"})
-        self._last_call = (key, result)
-        return result
+        with self.lock:
+            key = (self.turn, name, json.dumps(args, sort_keys=True, default=str))
+            if self._last_call and self._last_call[0] == key:
+                return replace(self._last_call[1], repeat=True)
+            try:
+                result = getattr(self, name)(**args)
+            except (TypeError, ValueError, ShopError, PieceStateError) as e:
+                return self._quiet({"error": f"{name} failed: {e}"})
+            self._last_call = (key, result)
+            return result

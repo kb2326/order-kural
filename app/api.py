@@ -119,13 +119,11 @@ def _agent_for(app, sid: str) -> AgentSession:
 
 
 def _brain(request: Request, agent: AgentSession) -> TextBrain:
-    brains: dict = request.app.state.text_brains
-    brain = brains.get(id(agent))
-    if brain is None or brain.session is not agent:
-        brain = TextBrain(agent, _key(), client=request.app.state.llm_client)
-        brains[id(agent)] = brain
-    brain.api_key = _key()
-    return brain
+    # The brain lives on its session, so evicting the session (LRU of 200) frees both (27 Nov review).
+    if agent.brain is None:
+        agent.brain = TextBrain(agent, _key(), client=request.app.state.llm_client)
+    agent.brain.api_key = _key()
+    return agent.brain
 
 
 def _limit(request: Request) -> None:
@@ -198,8 +196,9 @@ def agent_upload(request: Request, audio: UploadFile = File(...)) -> dict:
 
 def _tap(request: Request, words: str, action: str) -> dict:
     agent = _agent(request)
-    agent.heard(words)
-    result = agent.confirm_pending() if action == "confirm" else agent.discard_pending()
+    with agent.lock:  # a tap must not race a voice tool on the same pending order (27 Nov review)
+        agent.heard(words)
+        result = agent.confirm_pending() if action == "confirm" else agent.discard_pending()
     return {"spoken": [result.say], "ui": result.ui, "wrote": result.wrote}
 
 
@@ -360,12 +359,11 @@ def to_ship(request: Request) -> dict:
 def _sample_agent(request: Request, fresh: bool = False) -> AgentSession:
     """This tab's sample conversation: the real AgentSession over the tab's own in-memory shop."""
     svc = _svc(request)
-    agents: dict = request.app.state.sample_agents
-    agent = agents.get(id(svc))
-    if fresh or agent is None or agent.pieces is not svc:
+    agent = getattr(svc, "sample_agent", None)  # lives on the tab's sample service, evicted with it
+    if fresh or agent is None:
         agent = AgentSession(svc, ShopService(svc.store, svc.catalog), source="sample")
         agent.sample_index = 0
-        agents[id(svc)] = agent
+        svc.sample_agent = agent
     return agent
 
 

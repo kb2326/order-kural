@@ -25,9 +25,7 @@ def create_app(db_path: str | None = None) -> FastAPI:
     app.state.db_path = db_path or os.environ.get("ORDER_KURAL_DB", DEFAULT_DB)
     app.state.pieces = PieceService(Store(app.state.db_path), Catalog.load(ITEMS_FILE))
     app.state.sample_sessions = OrderedDict()
-    app.state.sample_agents = {}
     app.state.agent_sessions = OrderedDict()
-    app.state.text_brains = {}
     app.state.llm_client = None  # tests inject a mock httpx client here
     app.state.stt = None  # tests inject a fake speech-to-text here; None means Sarvam
     app.state.text_limiter = RateLimiter(per_ip_hour=30, per_day=300)

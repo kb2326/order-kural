@@ -24,6 +24,14 @@ MAX_ROUNDS = 4
 HISTORY = 30
 
 
+def window(messages: list[dict], n: int) -> list[dict]:
+    """The last n messages, starting at a user message, so a tool reply is never kept without the assistant
+    tool_calls message it answers (27 Nov review)."""
+    kept = messages[-n:]
+    first_user = next((i for i, m in enumerate(kept) if m["role"] == "user"), len(kept))
+    return kept[first_user:]
+
+
 @dataclass
 class TurnResult:
     spoken: list[str]
@@ -46,7 +54,7 @@ class TextBrain:
                 "tools": TOOL_SPECS,
                 "messages": [{"role": "system", "content": system_prompt(self.session.catalog,
                                                                           self.session.store.open_orders())}]
-                + self.messages[-HISTORY:]}
+                + window(self.messages, HISTORY)}
         start = time.perf_counter()
         with span(self.session.store, None, "chat", "sarvam") as s:
             r = self.client.post(URL, json=body, headers={"api-subscription-key": self.api_key})
@@ -78,18 +86,21 @@ class TextBrain:
                 spoke = []
                 for call in calls:
                     name = call["function"]["name"]
+                    reply: dict = {"facts": {"error": "tool did not run"}, "said_to_owner": ""}
                     try:
-                        args = json.loads(call["function"].get("arguments") or "{}")
-                    except json.JSONDecodeError:
-                        args = None
-                    out = (self.session.call(name, args) if isinstance(args, dict)
-                           else self.session._quiet({"error": "Arguments were not valid JSON"}))
-                    result.tool_calls.append({"name": name, "args": args, "say": out.say, "wrote": out.wrote})
-                    self.messages.append({"role": "tool", "tool_call_id": call["id"],
-                                          "content": json.dumps({"facts": out.facts, "said_to_owner": out.say},
-                                                                ensure_ascii=False, default=str)})
-                    if out.say:
-                        spoke.append(out.say)
+                        try:
+                            args = json.loads(call["function"].get("arguments") or "{}")
+                        except json.JSONDecodeError:
+                            args = None
+                        out = (self.session.call(name, args) if isinstance(args, dict)
+                               else self.session._quiet({"error": "Arguments were not valid JSON"}))
+                        reply = {"facts": out.facts, "said_to_owner": out.say}
+                        result.tool_calls.append({"name": name, "args": args, "say": out.say, "wrote": out.wrote})
+                        if out.say and not out.repeat:  # a repeated identical call is not spoken twice
+                            spoke.append(out.say)
+                    finally:  # every tool call gets its reply, or the API rejects all later turns (27 Nov review)
+                        self.messages.append({"role": "tool", "tool_call_id": call["id"],
+                                              "content": json.dumps(reply, ensure_ascii=False, default=str)})
                 if spoke:
                     result.spoken += spoke
                     self.messages.append({"role": "assistant", "content": " ".join(spoke)})

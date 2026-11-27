@@ -78,3 +78,16 @@ def test_app_start_does_not_import_pipecat():
     code = "import sys, app.main; print('pipecat' in sys.modules)"
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "False"
+
+
+def test_brain_lives_on_its_session_so_eviction_frees_it(keyed):
+    keyed.post("/api/agent/text", json={"text": "hello"}, headers=H)
+    agent = keyed.app.state.agent_sessions["agent-test-1"]
+    assert agent.brain is not None and not hasattr(keyed.app.state, "text_brains")
+
+
+def test_dockerfile_trusts_proxy_headers_for_rate_limits():
+    """Behind Cloud Run every visitor would share one rate-limit bucket without forwarded client IPs."""
+    from pathlib import Path
+    cmd = Path("Dockerfile").read_text()
+    assert "--proxy-headers" in cmd and "--forwarded-allow-ips" in cmd

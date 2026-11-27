@@ -7,7 +7,8 @@ from __future__ import annotations
 import time
 
 from fastapi import WebSocket
-from pipecat.frames.frames import (Frame, InputTransportMessageFrame, LLMFullResponseEndFrame, LLMMessagesAppendFrame,
+from pipecat.frames.frames import (Frame, FunctionCallsStartedFrame, InputTransportMessageFrame,
+                                   LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMMessagesAppendFrame,
                                    LLMTextFrame,
                                    OutputTransportMessageUrgentFrame, TranscriptionFrame, TTSSpeakFrame)
 from pipecat.pipeline.pipeline import Pipeline
@@ -49,7 +50,9 @@ def make_handler(session: AgentSession, name: str, clock: dict | None = None):
         result = session.call(name, dict(params.arguments or {}))
         await params.llm.push_frame(_event({"type": "slip", **result.ui}))
         payload = {"facts": result.facts, "said_to_owner": result.say}
-        if result.say:
+        if result.repeat:  # the same call already ran and spoke this turn: don't say it twice
+            await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
+        elif result.say:
             await params.llm.push_frame(_event({"type": "bot", "text": result.say}))
             await params.llm.push_frame(TTSSpeakFrame(result.say))
             await params.result_callback(payload, properties=FunctionCallResultProperties(run_llm=False))
@@ -83,8 +86,9 @@ class Ears(FrameProcessor):
         elif isinstance(frame, InputTransportMessageFrame) and isinstance(frame.message, dict) \
                 and frame.message.get("type") == "tap":
             confirm = frame.message["action"] == "confirm"
-            self.session.heard("sari" if confirm else "cancel")
-            result = self.session.confirm_pending() if confirm else self.session.discard_pending()
+            with self.session.lock:  # a tap must not race a voice tool on the same pending order
+                self.session.heard("sari" if confirm else "cancel")
+                result = self.session.confirm_pending() if confirm else self.session.discard_pending()
             await self.push_frame(_event({"type": "slip", **result.ui}))
             await self.push_frame(_event({"type": "bot", "text": result.say}))
             await self.push_frame(TTSSpeakFrame(result.say))
@@ -92,34 +96,53 @@ class Ears(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+def speak_llm_text(text: str, tool_called: bool) -> bool:
+    """The LLM's own words are spoken only in replies that called no tool. When a tool ran, the code-built sentence
+    is the whole answer (27 Nov review: '30 shirts added' next to a tool call that staged 20 went to the speaker)."""
+    return bool(text.strip()) and not tool_called
+
+
 class Mouth(FrameProcessor):
-    """After the LLM: sends the LLM's own words to the page and measures time from his last word to the reply."""
+    """After the LLM: holds the LLM's own words for one reply, then speaks them only if that reply called no tool and
+    claims nothing; otherwise the code says what really happened. Also measures time from his last word to the reply."""
 
     def __init__(self, clock: dict, session: AgentSession):
         super().__init__()
         self.clock, self.session = clock, session
+        self.held: list[LLMTextFrame] = []
+        self.tool_in_reply = False
+        self.names = tuple(n.casefold() for i in session.catalog.all() for n in (i.name, *i.aliases))
+
+    async def _latency(self) -> None:
+        if self.clock.get("t_user"):
+            gap = round(time.monotonic() - self.clock.pop("t_user"), 2)
+            await self.push_frame(_event({"type": "latency", "s": gap}))
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
-        if isinstance(frame, LLMTextFrame):
-            self.clock["said"] = self.clock.get("said", "") + frame.text
-        if isinstance(frame, LLMFullResponseEndFrame) and not self.clock.get("warned") \
-                and words.unbacked_claim(self.clock.get("said", ""), self.clock.get("tool_turn", False),
-                                         tuple(n.casefold() for i in self.session.catalog.all()
-                                               for n in (i.name, *i.aliases))):
-            # The AI claimed an action no tool performed (27 Nov live check): correct it out loud, in code.
-            self.clock["warned"] = True
-            fix = say.render("not_done", {}, self.session.language)
-            await self.push_frame(frame, direction)
-            await self.push_frame(_event({"type": "bot", "text": fix}))
-            await self.push_frame(TTSSpeakFrame(fix))
+        if isinstance(frame, LLMFullResponseStartFrame):
+            self.held, self.tool_in_reply = [], False
+        elif isinstance(frame, FunctionCallsStartedFrame):
+            self.tool_in_reply, self.held = True, []
+        elif isinstance(frame, LLMTextFrame):
+            self.held.append(frame)
             return
-        if isinstance(frame, (LLMTextFrame, TTSSpeakFrame)):
-            if self.clock.get("t_user"):
-                gap = round(time.monotonic() - self.clock.pop("t_user"), 2)
-                await self.push_frame(_event({"type": "latency", "s": gap}))
-            if isinstance(frame, LLMTextFrame):
-                await self.push_frame(_event({"type": "bot", "text": frame.text, "partial": True}))
+        elif isinstance(frame, LLMFullResponseEndFrame):
+            text = "".join(f.text for f in self.held)
+            held, self.held = self.held, []
+            if speak_llm_text(text, self.tool_in_reply or self.clock.get("tool_turn", False)):
+                await self._latency()
+                if words.unbacked_claim(text, False, self.names) and not self.clock.get("warned"):
+                    self.clock["warned"] = True  # it claimed an action no tool performed: correct it, in code
+                    fix = say.render("not_done", {}, self.session.language)
+                    await self.push_frame(_event({"type": "bot", "text": fix}))
+                    await self.push_frame(TTSSpeakFrame(fix))
+                else:
+                    await self.push_frame(_event({"type": "bot", "text": text}))
+                    for f in held:
+                        await self.push_frame(f, direction)
+        elif isinstance(frame, TTSSpeakFrame):
+            await self._latency()
         await self.push_frame(frame, direction)
 
 
